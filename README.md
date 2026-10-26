@@ -45,6 +45,7 @@ it-onsite/
 ├── frontend/       Mã nguồn giao diện (React)
 ├── infra/          Docker Compose, cấu hình triển khai
 ├── docs/           Tài liệu dự án
+│   ├── srs/        Tài liệu đặc tả yêu cầu phần mềm (SRS)
 │   └── quan-ly/    WBS, bảng phân công nhiệm vụ
 └── .github/        Mẫu Issue, mẫu Pull Request
 ```
@@ -53,6 +54,7 @@ it-onsite/
 
 | Tài liệu | Vị trí | Trạng thái |
 |---|---|---|
+| Đặc tả yêu cầu phần mềm (SRS) v0.1 | [docs/srs/SRS_IT_OnSite_v0.1.docx](docs/srs/SRS_IT_OnSite_v0.1.docx) | Đã duyệt |
 | WBS và kế hoạch | [docs/quan-ly/WBS_IT_OnSite.xlsx](docs/quan-ly/WBS_IT_OnSite.xlsx) | Đã duyệt |
 | Phân công nhiệm vụ theo giai đoạn | [docs/quan-ly/PhanCong_IT_OnSite.xlsx](docs/quan-ly/PhanCong_IT_OnSite.xlsx) | Đang theo dõi |
 
