@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
-  BACKEND, claimStatus, expectStatus, getTicket, loginAs, myTickets, readMock, resetData, surveyFee, technician, tomorrowInput, trackErrors,
+  BACKEND, claimStatus, expectStatus, getTicket, loginAs, myTickets, patchMock, readMock, resetData, surveyFee, technician, tomorrowInput, trackErrors,
   warrantiesOf, warrantyTicketOf,
 } from './helpers.js';
 
@@ -164,10 +164,10 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
   test('BR-06: kỹ thuật viên quá hạn phản hồi thì phân công tự thu hồi', async ({ page }) => {
     test.skip(BACKEND, 'Trên backend thật, quy tắc này được kiểm thử bằng pytest (tests/test_flow.py)');
     await loginAs(page, 'dpv@demo.vn');
-    const db = await readMock(page);
-    const pending = db.tickets.find((t) => t.status === 'DA_PHAN_CONG' && !t.assignment.result);
-    pending.assignment.deadline = new Date(Date.now() - 60_000).toISOString();
-    await page.evaluate((data) => localStorage.setItem('itonsite.mock.v1', JSON.stringify(data)), db);
+    const pending = (await readMock(page)).tickets.find((t) => t.status === 'DA_PHAN_CONG' && !t.assignment.result);
+    await patchMock(page, (db, id) => {
+      db.tickets.find((t) => t.id === id).assignment.deadline = new Date(Date.now() - 60_000).toISOString();
+    }, pending.id);
     await page.goto('/dieu-phoi');
     const t = await expectStatus(page, pending.id, 'DA_TIEP_NHAN');
     expect(t.assignment.result).toBe('QUA_HAN');

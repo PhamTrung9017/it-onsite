@@ -14,9 +14,10 @@ const MOCK_SESSION_KEY = 'itonsite.session.v1';
 const TOKEN_KEY = 'itonsite.tokens.v1';
 const ADMIN = 'qtv@demo.vn';
 
-/** Đưa dữ liệu về trạng thái mẫu để mỗi kịch bản bắt đầu như nhau. */
+/** Đưa dữ liệu về trạng thái mẫu để mỗi kịch bản bắt đầu như nhau; E2E_CLOCK đặt giờ trình duyệt để thử ở các thời điểm khác nhau trong ngày. */
 export async function resetData(page) {
   if (BACKEND) execSync(RESET_COMMAND, { cwd: BACKEND_DIR, stdio: 'ignore' });
+  else if (process.env.E2E_CLOCK) await page.clock.install({ time: new Date(process.env.E2E_CLOCK) });
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
 }
@@ -126,6 +127,19 @@ export function trackErrors(page) {
     if (m.type() === 'error' && !m.text().includes('Failed to load resource')) errors.push(m.text());
   });
   return errors;
+}
+
+/**
+ * Sửa dữ liệu giả lập từ một trang tĩnh cùng nguồn, nơi ứng dụng không chạy,
+ * để không bị yêu cầu đang dở của ứng dụng ghi đè.
+ */
+export async function patchMock(page, mutate, arg) {
+  await page.goto('/favicon.svg');
+  await page.evaluate(({ key, source, arg }) => {
+    const db = JSON.parse(localStorage.getItem(key));
+    new Function('db', 'arg', source)(db, arg);
+    localStorage.setItem(key, JSON.stringify(db));
+  }, { key: MOCK_KEY, source: `(${mutate.toString()})(db, arg);`, arg });
 }
 
 export { readMock };
