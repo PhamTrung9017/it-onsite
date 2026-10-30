@@ -13,7 +13,8 @@ export default defineConfig({
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,
-  reporter: [['list']],
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? [['github'], ['list']] : [['list']],
   use: {
     baseURL: `http://localhost:${port}`,
     timezoneId: 'Asia/Ho_Chi_Minh',
