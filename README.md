@@ -29,12 +29,12 @@ IT OnSite là ứng dụng web giúp một dịch vụ cài đặt phần mềm,
 
 | Thành phần | Công nghệ |
 |---|---|
-| Giao diện | React |
+| Giao diện | React 18, Vite, React Router |
 | Backend | Python 3.12, FastAPI, SQLAlchemy, Alembic |
 | Cơ sở dữ liệu | PostgreSQL 16 |
 | AI phân loại sự cố | Gemini API |
 | Thông báo | Telegram Bot API, email (SMTP) |
-| Kiểm thử | Pytest, Playwright |
+| Kiểm thử | Pytest, Vitest, Playwright |
 | Đóng gói, triển khai | Docker, GitHub Actions |
 
 ## Cấu trúc thư mục
@@ -42,7 +42,7 @@ IT OnSite là ứng dụng web giúp một dịch vụ cài đặt phần mềm,
 ```
 it-onsite/
 ├── backend/        Mã nguồn REST API (FastAPI)
-├── frontend/       Mã nguồn giao diện (React)
+├── frontend/       Mã nguồn giao diện (React), xem frontend/README.md
 ├── infra/          Docker Compose, cấu hình triển khai
 ├── docs/           Tài liệu dự án
 │   ├── srs/        Tài liệu đặc tả yêu cầu phần mềm (SRS)
