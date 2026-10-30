@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useLoad } from '../../hooks/useApi.js';
+import { Download } from 'lucide-react';
+import { useAction, useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
-import { Card, ErrorState, Loading, PageHead, Segmented, Stars, StatusBadge } from '../../components/ui.jsx';
+import { Button, Card, ErrorState, Loading, PageHead, Segmented, Stars, StatusBadge } from '../../components/ui.jsx';
 import { money } from '../../lib/format.js';
+import { downloadReport } from '../../lib/reportExport.js';
 
 function Delta({ cur, prev, inverse, unit = '%' }) {
   if (!prev) return <div className="d faint">Chưa có kỳ trước để so sánh</div>;
@@ -16,9 +18,15 @@ const short = (v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1).replace('.', ',')} tr` 
 export default function ReportsPage() {
   const [days, setDays] = useState(30);
   const { data: r, loading, error, reload } = useLoad(() => api.report({ days }), [days]);
+  const { busy, run } = useAction();
+  const exportExcel = () => run('excel', async () => downloadReport({ report: r, rows: await api.reportTickets({ days }), days }), 'Đã tải file Excel báo cáo.');
   return (
     <>
-      <PageHead title="Báo cáo thống kê" sub={`Số liệu ${days} ngày gần nhất`} actions={<Segmented label="Khoảng thời gian" value={days} onChange={setDays} options={[{ value: 7, label: '7 ngày' }, { value: 30, label: '30 ngày' }]} />} />
+      <PageHead title="Báo cáo thống kê" sub={`Số liệu ${days} ngày gần nhất`}
+        actions={<>
+          <Segmented label="Khoảng thời gian" value={days} onChange={setDays} options={[{ value: 7, label: '7 ngày' }, { value: 30, label: '30 ngày' }]} />
+          <Button variant="outline" icon={Download} disabled={!r || loading} loading={busy === 'excel'} onClick={exportExcel}>Xuất Excel</Button>
+        </>} />
       {loading && <Loading rows={3} />}
       {error && <ErrorState error={error} onRetry={reload} />}
       {r && !loading && (

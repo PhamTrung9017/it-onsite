@@ -157,4 +157,5 @@ export const httpApi = {
   createInternalUser: (body) => post('/admin/users', body),
   saveConfig: (body) => put('/admin/config', body),
   report: ({ days }) => get(`/admin/reports?days=${days}`),
+  reportTickets: ({ days }) => get(`/admin/reports/tickets?days=${days}`),
 };

@@ -10,6 +10,7 @@ from app.core.errors import ApiError
 from app.domain.status import STATUS_LABEL, Status
 from app.models import Category, Technician, Ticket, User
 from app.services.common import require_roles, utcnow
+from app.services.present import iso
 
 ALLOWED_DAYS = (7, 30, 90)
 
@@ -34,10 +35,14 @@ def _avg_stars(tickets: list[Ticket]) -> float | None:
     return sum(reviewed) / len(reviewed) if reviewed else None
 
 
-def report(db: Session, user: User, days: int) -> dict:
+def _check(user: User, days: int) -> None:
     require_roles(user, "QTV")
     if days not in ALLOWED_DAYS:
         raise ApiError("Khoảng thời gian báo cáo không hợp lệ.")
+
+
+def report(db: Session, user: User, days: int) -> dict:
+    _check(user, days)
     tz = get_settings().tz
     now = utcnow()
     since = now - timedelta(days=days)
@@ -86,3 +91,31 @@ def report(db: Session, user: User, days: int) -> dict:
         "byCategory": [c for c in by_category if c["count"]],
         "byTech": by_tech,
     }
+
+
+def ticket_rows(db: Session, user: User, days: int) -> list[dict]:
+    """Danh sách phiếu tạo trong kỳ báo cáo, dùng cho file Excel xuất từ màn hình báo cáo."""
+    _check(user, days)
+    since = utcnow() - timedelta(days=days)
+    tickets = db.scalars(select(Ticket).where(Ticket.created_at >= since).order_by(Ticket.created_at.desc())).all()
+    categories = {c.code: c.name for c in db.scalars(select(Category))}
+    technicians = {t.id: t.user.name for t in db.scalars(select(Technician))}
+    return [
+        {
+            "id": t.id,
+            "createdAt": iso(t.created_at),
+            "customer": t.customer.name,
+            "ward": t.ward,
+            "category": categories.get(t.category_code, ""),
+            "urgency": t.urgency,
+            "status": t.status,
+            "technician": technicians.get(t.assignment.tech_id, "") if t.assignment else "",
+            "appointmentAt": iso(t.assignment.appointment_at if t.assignment else t.slot_start),
+            "completedAt": iso(t.completed_at),
+            "amount": t.payment.amount if t.payment else None,
+            "paymentMethod": t.payment.method if t.payment else None,
+            "paymentStatus": t.payment.status if t.payment else None,
+            "stars": t.review.stars if t.review else None,
+        }
+        for t in tickets
+    ]

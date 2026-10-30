@@ -1023,6 +1023,31 @@ export const mockApi = {
       byDay, byStatus, byCategory, byTech,
     };
   }, 220),
+
+  reportTickets: ({ days }) => respond((db) => {
+    requireRole(db, 'QTV');
+    const since = Date.now() - days * DAY;
+    const nameOf = (userId) => db.users.find((u) => u.id === userId)?.name || '';
+    return db.tickets
+      .filter((t) => new Date(t.createdAt).getTime() >= since)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((t) => ({
+        id: t.id,
+        createdAt: t.createdAt,
+        customer: nameOf(t.customerId),
+        ward: t.ward,
+        category: db.categories.find((c) => c.code === t.categoryCode)?.name || '',
+        urgency: t.urgency,
+        status: t.status,
+        technician: t.assignment ? nameOf(db.technicians.find((k) => k.id === t.assignment.techId)?.userId) : '',
+        appointmentAt: t.assignment?.appointmentAt || t.slotStart,
+        completedAt: t.completedAt || null,
+        amount: t.payment ? t.payment.amount : null,
+        paymentMethod: t.payment?.method || null,
+        paymentStatus: t.payment?.status || null,
+        stars: t.review?.stars ?? null,
+      }));
+  }, 220),
 };
 
 function applyQuoteDecision(db, t, q, actor, decision, itemIds, reason) {

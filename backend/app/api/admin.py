@@ -77,3 +77,8 @@ def save_config(body: dict, user: CurrentUser, db: Db) -> dict:
 @router.get("/reports")
 def report(days: int, user: CurrentUser, db: Db) -> dict:
     return reports.report(db, user, days)
+
+
+@router.get("/reports/tickets")
+def report_tickets(days: int, user: CurrentUser, db: Db) -> list[dict]:
+    return reports.ticket_rows(db, user, days)

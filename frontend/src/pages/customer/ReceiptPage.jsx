@@ -4,7 +4,7 @@ import { useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
 import { Alert, Button, ButtonLink, ErrorState, Loading, PageHead } from '../../components/ui.jsx';
 import { AddressLine } from '../../components/ticket.jsx';
-import { STATUS } from '../../lib/ticketStatus.js';
+import { PAYMENT_METHOD_LABEL, STATUS } from '../../lib/ticketStatus.js';
 import { formatDate, formatDateTime, money } from '../../lib/format.js';
 
 const PAYMENT_TEXT = {
@@ -13,7 +13,6 @@ const PAYMENT_TEXT = {
   DA_XAC_NHAN: 'Đã nhận chuyển khoản',
   MIEN_PHI: 'Không phát sinh chi phí',
 };
-const METHOD_TEXT = { TIEN_MAT: 'Tiền mặt', CHUYEN_KHOAN: 'Chuyển khoản VietQR' };
 
 /** Các dòng tính tiền của phiếu: hạng mục đã duyệt, phí khảo sát khi từ chối báo giá, phí đổi lịch sát giờ. */
 function receiptLines(t) {
@@ -109,7 +108,7 @@ export default function ReceiptPage() {
         </div>
 
         <dl className="kv receipt-info">
-          <dt>Thanh toán</dt><dd>{PAYMENT_TEXT[t.payment.status] || t.payment.status}{t.payment.method && ` · ${METHOD_TEXT[t.payment.method]}`}</dd>
+          <dt>Thanh toán</dt><dd>{PAYMENT_TEXT[t.payment.status] || t.payment.status}{t.payment.method && ` · ${PAYMENT_METHOD_LABEL[t.payment.method]}`}</dd>
           <dt>Thời điểm</dt><dd>{formatDateTime(t.payment.paidAt)}</dd>
         </dl>
 

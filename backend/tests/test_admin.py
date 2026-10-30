@@ -15,6 +15,17 @@ def test_overview_and_reports(qtv):
     assert qtv.get("/admin/reports?days=5").status_code == 400
 
 
+def test_report_ticket_rows_match_summary(qtv, khach):
+    report = qtv.ok("get", "/admin/reports?days=30")
+    rows = qtv.ok("get", "/admin/reports/tickets?days=30")
+    assert len(rows) == report["total"]
+    assert sum(r["amount"] for r in rows if r["status"] == "HOAN_TAT") == report["revenue"]
+    assert sum(1 for r in rows if r["status"] == "DA_HUY") == report["cancelled"]
+    assert [r["createdAt"] for r in rows] == sorted((r["createdAt"] for r in rows), reverse=True)
+    assert khach.get("/admin/reports/tickets?days=30").status_code == 403
+    assert qtv.get("/admin/reports/tickets?days=5").status_code == 400
+
+
 def test_price_change_does_not_affect_existing_quote_br13(qtv, khach):
     service = next(s for s in qtv.ok("get", "/admin/overview")["services"] if s["categoryCode"] == "NGUON")
     ticket = next(t for t in khach.ok("get", "/tickets/mine") if t["status"] == "CHO_DUYET_BAO_GIA")

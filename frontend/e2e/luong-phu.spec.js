@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import {
   claimStatus, expectStatus, getTicket, loginAs, myTickets, notificationsOf, resetData, tomorrowInput, trackErrors, warrantiesOf,
@@ -52,6 +53,19 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await loginAs(page, 'phuc.le@demo.vn');
     await page.goto('/ktv/ho-so');
     await expect(page.getByText(/Ngày nghỉ sắp tới:/)).toBeVisible();
+  });
+
+  test('UC21: quản trị viên xuất báo cáo ra file Excel', async ({ page }) => {
+    await loginAs(page, 'qtv@demo.vn');
+    await page.goto('/quan-tri/bao-cao');
+    await page.getByRole('button', { name: '7 ngày' }).click();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Xuất Excel' }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/^bao-cao-7-ngay-\d{4}-\d{2}-\d{2}\.xlsx$/);
+    const content = readFileSync(await file.path());
+    expect(content.subarray(0, 2).toString()).toBe('PK');
+    await expect(page.getByText('Đã tải file Excel báo cáo.')).toBeVisible();
   });
 
   test('UC13, UC10: nghiệm thu chưa đạt, báo giá bổ sung, làm lại rồi thu tiền mặt', async ({ page }) => {
