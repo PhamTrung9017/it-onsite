@@ -4,6 +4,7 @@ import { useAuth, useToast } from '../../context/AppContext.jsx';
 import { useAction, useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
 import { Alert, Button, Card, Empty, ErrorState, Field, Loading, Modal, PageHead } from '../../components/ui.jsx';
+import { TelegramCard } from '../../components/TelegramCard.jsx';
 
 const ICON = { Laptop, PC: Monitor, 'Thiết bị khác': Printer };
 
@@ -69,6 +70,7 @@ export default function ProfilePage() {
           </Card>
         </div>
         <div className="stack">
+          <TelegramCard />
           <Card title="Bảo mật">
             <Button variant="outline" block icon={KeyRound} onClick={() => setPw({ current: '', next: '' })}>Đổi mật khẩu</Button>
           </Card>

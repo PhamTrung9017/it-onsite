@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, Db
+from app.core.config import get_settings
 from app.models import Category, Part, Service
 from app.services.common import load_config, require_roles
 from app.services.present import category_json
@@ -36,6 +37,7 @@ def part_json(part: Part) -> dict:
 def catalog(db: Db) -> dict:
     """UC03: dịch vụ, giá tham khảo, phí khảo sát; xem được khi chưa đăng nhập."""
     config = load_config(db)
+    settings = get_settings()
     return {
         "services": [service_json(s) for s in db.scalars(select(Service).where(Service.active.is_(True)).order_by(Service.id))],
         "categories": [category_json(c) for c in db.scalars(select(Category).order_by(Category.position))],
@@ -46,6 +48,7 @@ def catalog(db: Db) -> dict:
             "areas": config.areas,
             "reviewWindowDays": config.review_window_days,
         },
+        "features": {"telegram": bool(settings.telegram_bot_token and settings.telegram_bot_username)},
     }
 
 
