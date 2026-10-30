@@ -55,17 +55,29 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await expect(page.getByText(/Ngày nghỉ sắp tới:/)).toBeVisible();
   });
 
-  test('UC21: quản trị viên xuất báo cáo ra file Excel', async ({ page }) => {
+  test('UC21, UC23: cấu hình lương, xuất báo cáo tháng ra file Excel', async ({ page }) => {
     await loginAs(page, 'qtv@demo.vn');
+    await page.goto('/quan-tri/cau-hinh');
+    await page.fill('#ps', '5500000');
+    await page.fill('#pc', '25');
+    await page.getByRole('button', { name: 'Lưu cấu hình' }).click();
+    await expect(page.getByText('Đã lưu cấu hình.')).toBeVisible();
+
     await page.goto('/quan-tri/bao-cao');
-    await page.getByRole('button', { name: '7 ngày' }).click();
+    await page.getByRole('button', { name: 'Theo tháng' }).click();
+    const month = await page.getByLabel('Tháng báo cáo').inputValue();
+    await expect(page.getByText(/^Tháng \d{1,2}\/\d{4} · /)).toBeVisible();
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Xuất Excel' }).click();
     const file = await download;
-    expect(file.suggestedFilename()).toMatch(/^bao-cao-7-ngay-\d{4}-\d{2}-\d{2}\.xlsx$/);
-    const content = readFileSync(await file.path());
-    expect(content.subarray(0, 2).toString()).toBe('PK');
+    expect(file.suggestedFilename()).toBe(`bao-cao-thang-${month.slice(5)}-${month.slice(0, 4)}.xlsx`);
+    expect(readFileSync(await file.path()).subarray(0, 2).toString()).toBe('PK');
     await expect(page.getByText('Đã tải file Excel báo cáo.')).toBeVisible();
+
+    await page.getByRole('button', { name: '7 ngày' }).click();
+    const weekly = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Xuất Excel' }).click();
+    expect((await weekly).suggestedFilename()).toMatch(/^bao-cao-\d{4}-\d{2}-\d{2}-den-\d{4}-\d{2}-\d{2}\.xlsx$/);
   });
 
   test('UC13, UC10: nghiệm thu chưa đạt, báo giá bổ sung, làm lại rồi thu tiền mặt', async ({ page }) => {

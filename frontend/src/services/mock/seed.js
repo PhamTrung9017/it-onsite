@@ -53,6 +53,7 @@ export const DEFAULT_CONFIG = {
   serviceHours: { start: '08:00', end: '20:00' },
   areas: AREAS,
   bank: { name: 'Ngân hàng mẫu', bin: '970423', accountNumber: '0123456789', accountName: 'CAI WIN DAO' },
+  payroll: { baseSalary: 5000000, commissionPercent: 30 },
 };
 
 const USERS = [
@@ -180,6 +181,7 @@ export function buildSeed(nowDate = new Date()) {
   const histCats = ['CAI_HDH', 'VIRUS', 'MAY_CHAM', 'PHAN_MEM', 'MANG', 'PHAN_CUNG', 'NGUON', 'CAI_HDH', 'VIRUS', 'MAY_CHAM'];
   const customers = USERS.filter((u) => u.roles.includes('KHACH'));
   const activeTechs = TECHNICIANS.filter((t) => t.active);
+  let served = 0;
   for (let d = 30; d >= 2; d -= 1) {
     const count = 1 + Math.floor(r() * 3);
     for (let k = 0; k < count; k += 1) {
@@ -202,6 +204,13 @@ export function buildSeed(nowDate = new Date()) {
         const items = [serviceItem(svcId)];
         if (cat === 'PHAN_CUNG') items.push(partItem(r() < 0.5 ? 'lk-ssd512' : 'lk-ram8'));
         if (cat === 'MAY_CHAM' && r() < 0.5) items.push(serviceItem('dv-vesinh'));
+        served += 1;
+        const missed = { 4: 'TU_CHOI', 8: 'QUA_HAN' }[served % 9];
+        const other = activeTechs[(activeTechs.indexOf(tech) + 1) % activeTechs.length];
+        const answered = created + (missed === 'TU_CHOI' ? 15 : 27) * MIN;
+        if (missed) {
+          t.assignmentLog = [{ techId: other.id, appointmentAt: iso(appt), assignedAt: iso(created + 12 * MIN), deadline: iso(created + 27 * MIN), result: missed, respondedAt: iso(answered), ...(missed === 'TU_CHOI' ? { rejectReason: 'Đang xử lý phiếu khác ở xa' } : {}) }];
+        }
         t.assignment = { techId: tech.id, appointmentAt: iso(appt), assignedAt: iso(created + 20 * MIN), deadline: iso(created + 35 * MIN), result: 'NHAN', respondedAt: iso(created + 28 * MIN) };
         t.checkInAt = iso(appt);
         t.quotes = [{ id: `bg-${id}`, type: 'CHINH', status: rejected ? 'TU_CHOI' : 'DA_DUYET', items, note: '', createdAt: iso(appt + 20 * MIN), createdBy: tech.id, decidedAt: iso(appt + 30 * MIN), rejectReason: rejected ? 'Chi phí cao hơn dự kiến' : '' }];
@@ -210,10 +219,15 @@ export function buildSeed(nowDate = new Date()) {
         t.photosBefore = rejected ? [] : ['mau'];
         t.photosAfter = rejected ? [] : ['mau'];
         t.acceptance = rejected ? null : { result: 'DAT', at: iso(done) };
-        t.payment = { amount, method, status: method === 'TIEN_MAT' ? 'DA_DOI_SOAT' : 'DA_XAC_NHAN', paidAt: iso(done + 10 * MIN), confirmedBy: method === 'TIEN_MAT' ? tech.id : 'u-dpv1', reconciledAt: iso(done + DAY) };
+        const reconciled = method === 'TIEN_MAT' && d > 3;
+        t.payment = {
+          amount, method, status: method === 'TIEN_MAT' ? (reconciled ? 'DA_DOI_SOAT' : 'DA_THU') : 'DA_XAC_NHAN', paidAt: iso(done + 10 * MIN),
+          confirmedBy: method === 'TIEN_MAT' ? tech.userId : 'u-dpv1', confirmedAt: iso(done + 10 * MIN), ...(reconciled ? { reconciledAt: iso(done + DAY) } : {}),
+        };
         t.completedAt = iso(done + 10 * MIN);
         t.history = history([
           [STATUS.MOI, created, cust.name], [STATUS.DA_TIEP_NHAN, created + 10 * MIN, 'Trần Thị Lan'],
+          ...(missed ? [[STATUS.DA_PHAN_CONG, created + 12 * MIN, 'Trần Thị Lan'], [STATUS.DA_TIEP_NHAN, answered, 'Hệ thống', missed === 'TU_CHOI' ? 'KTV từ chối' : 'KTV quá hạn phản hồi, đã thu hồi phân công']] : []),
           [STATUS.DA_PHAN_CONG, created + 20 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 28 * MIN, 'KTV'],
           [STATUS.DANG_KHAO_SAT, appt, 'KTV'], [STATUS.CHO_DUYET_BAO_GIA, appt + 20 * MIN, 'KTV'],
           ...(rejected

@@ -80,7 +80,7 @@ Tất cả có tiền tố `/api`. Xác thực bằng `Authorization: Bearer <ac
 | Kỹ thuật viên | `GET /tech/jobs`, `GET /tech/profile`, `POST /tickets/{id}/assignment/response`, `/check-in`, `/quotes`, `/onsite-code`, `/onsite-code/confirm`, `PUT /tickets/{id}/checklist`, `POST/DELETE /tickets/{id}/photos`, `POST /tickets/{id}/complete`, `/payment/cash-received` | UC09, UC10, UC12, UC14 |
 | Điều phối | `GET /dispatch/board`, `POST /tickets/{id}/receive`, `GET /tickets/{id}/technician-suggestions`, `POST /tickets/{id}/assign`, `GET /payments`, `POST /tickets/{id}/payment/confirm`, `/payment/reconcile`, `GET /warranty-claims`, `POST /warranty-claims/{id}/decision` | UC05, UC08, UC14, UC15 |
 | Thông báo | `GET /notifications`, `POST /notifications/read` | UC17 |
-| Quản trị | `GET /admin/overview`, `PUT /admin/services`, `/admin/parts`, `/admin/technicians`, `/admin/users/{id}/roles`, `POST /admin/users`, `PUT /admin/config`, `GET /admin/reports?days=`, `GET /admin/reports/tickets?days=` | UC18–UC23 |
+| Quản trị | `GET /admin/overview`, `PUT /admin/services`, `/admin/parts`, `/admin/technicians`, `/admin/users/{id}/roles`, `POST /admin/users`, `PUT /admin/config`, `GET /admin/reports?days=` hoặc `?month=`, `GET /admin/reports/export?days=` hoặc `?month=` | UC18–UC23 |
 
 Lỗi nghiệp vụ trả về `{"detail": "<thông báo tiếng Việt>"}` với mã 400, 401, 403, 404, 409 hoặc 429.
 
