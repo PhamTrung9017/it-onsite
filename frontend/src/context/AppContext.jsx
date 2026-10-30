@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { api } from '../services/api.js';
+import { SESSION_EXPIRED_EVENT } from '../services/http/httpApi.js';
 
 /* ---------------- Thông báo nổi ---------------- */
 
@@ -56,6 +57,9 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     api.me().then(setUser).catch(() => setUser(null)).finally(() => setReady(true));
+    const expired = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expired);
   }, []);
 
   const setActiveRole = useCallback((role) => {
