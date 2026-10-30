@@ -80,14 +80,15 @@ frontend/
 | `/khach/phieu`, `/khach/phieu/:id` | Danh sách, chi tiết phiếu, hủy, đổi lịch, nghiệm thu, đánh giá | UC06, UC07, UC13, UC16 |
 | `/khach/phieu/:id/bao-gia` | Duyệt toàn bộ, một phần hoặc từ chối báo giá | UC11 |
 | `/khach/phieu/:id/thanh-toan` | Chuyển khoản VietQR hoặc tiền mặt | UC14 |
+| `/khach/phieu/:id/bien-nhan` | Biên nhận dịch vụ in được sau khi hoàn tất | UC06 |
 | `/khach/bao-hanh` | Phiếu bảo hành, gửi yêu cầu bảo hành | UC15 |
 | `/ktv/lich-viec`, `/ktv/viec/:id` | Lịch việc, nhận hoặc từ chối, check-in, ảnh, checklist, hoàn thành, thu tiền | UC09, UC12, UC14 |
 | `/ktv/viec/:id/bao-gia` | Lập báo giá chính và báo giá bổ sung | UC10 |
-| `/dieu-phoi` | Bảng điều phối: tiếp nhận, xác nhận loại sự cố, phân công | UC05, UC08 |
+| `/dieu-phoi` | Bảng điều phối: tiếp nhận, xác nhận loại sự cố, phân công theo kỹ năng, khu vực và lịch làm việc | UC05, UC08 |
 | `/dieu-phoi/thanh-toan` | Xác nhận chuyển khoản, đối soát tiền mặt | UC14 |
 | `/dieu-phoi/bao-hanh` | Xử lý yêu cầu bảo hành | UC15 |
 | `.../thong-bao` | Thông báo trên web (mọi vai trò) | UC17 |
-| `/quan-tri/ky-thuat-vien` | Kỹ thuật viên: kỹ năng, khu vực, khóa | UC18 |
+| `/quan-tri/ky-thuat-vien` | Kỹ thuật viên: kỹ năng, khu vực, lịch làm việc, ngày nghỉ, khóa | UC18 |
 | `/quan-tri/dich-vu`, `/quan-tri/linh-kien` | Dịch vụ, bảng giá, linh kiện | UC19, UC20 |
 | `/quan-tri/bao-cao` | Báo cáo thống kê | UC21 |
 | `/quan-tri/tai-khoan` | Tài khoản nội bộ và phân quyền | UC22 |
