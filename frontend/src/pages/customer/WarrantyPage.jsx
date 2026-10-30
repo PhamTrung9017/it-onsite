@@ -6,7 +6,7 @@ import { api } from '../../services/api.js';
 import { Alert, Badge, Button, Card, Empty, ErrorState, Field, Loading, Modal, PageHead } from '../../components/ui.jsx';
 import { combineDateTime, formatDate, timeSlots, toDateInput } from '../../lib/format.js';
 
-const CLAIM = { CHO_XU_LY: ['warning', 'Đang chờ xử lý'], HOP_LE: ['success', 'Đã chấp nhận'] };
+const CLAIM = { CHO_XU_LY: ['warning', 'Đang chờ xử lý'], HOP_LE: ['success', 'Đã chấp nhận'], TU_CHOI: ['danger', 'Bị từ chối'] };
 
 export default function WarrantyPage() {
   const { data, loading, error, reload } = useLoad(async () => {
@@ -40,11 +40,16 @@ export default function WarrantyPage() {
               </div>
               <div className="small muted">{w.device?.brand} {w.device?.model} · Phiếu <Link to={`/khach/phieu/${w.ticketId}`} className="mono">{w.ticketId}</Link></div>
               <div className="tiny muted">Hiệu lực {formatDate(w.startAt)} – {formatDate(w.endAt)}</div>
-              <div style={{ marginTop: 6 }}>
-                {w.claim ? (
-                  <span className="row-sm wrap"><Badge tone={CLAIM[w.claim.status][0]}>{CLAIM[w.claim.status][1]}</Badge>{w.claim.newTicketId && <Link to={`/khach/phieu/${w.claim.newTicketId}`} className="small">Xem phiếu bảo hành {w.claim.newTicketId}</Link>}</span>
-                ) : w.valid && <Button variant="outline" size="sm" onClick={() => setTarget(w)}>Yêu cầu bảo hành</Button>}
-              </div>
+              {w.claim && (
+                <div className="row-sm wrap" style={{ marginTop: 6 }}>
+                  <Badge tone={CLAIM[w.claim.status][0]}>Yêu cầu gần nhất: {CLAIM[w.claim.status][1]}</Badge>
+                  {w.claim.newTicketId && <Link to={`/khach/phieu/${w.claim.newTicketId}`} className="small">Xem phiếu bảo hành {w.claim.newTicketId}</Link>}
+                  {w.claim.status === 'TU_CHOI' && w.claim.reason && <span className="small muted">{w.claim.reason}</span>}
+                </div>
+              )}
+              {w.valid && w.claim?.status !== 'CHO_XU_LY' && (
+                <div style={{ marginTop: 6 }}><Button variant="outline" size="sm" onClick={() => setTarget(w)}>Yêu cầu bảo hành</Button></div>
+              )}
             </div>
           </div>
         ))}

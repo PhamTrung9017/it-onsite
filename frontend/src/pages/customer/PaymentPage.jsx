@@ -12,6 +12,7 @@ const PAID_LABEL = {
   DA_THU: 'Kỹ thuật viên đã xác nhận thu tiền mặt.',
   DA_XAC_NHAN: 'Đã xác nhận nhận được chuyển khoản.',
   DA_DOI_SOAT: 'Đã thu và đối soát tiền mặt.',
+  MIEN_PHI: 'Phiếu không phát sinh chi phí.',
 };
 
 export default function PaymentPage() {

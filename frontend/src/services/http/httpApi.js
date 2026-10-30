@@ -90,7 +90,7 @@ export const httpApi = {
   me: () => (readTokens() ? get('/auth/me') : Promise.reject(new ApiError('Chưa đăng nhập.', 401))),
   requestPasswordReset: (body) => send('POST', '/auth/forgot-password', body),
   resetPassword: (body) => send('POST', '/auth/reset-password', body),
-  changePassword: (body) => post('/auth/change-password', body),
+  changePassword: async (body) => saveTokens(await post('/auth/change-password', body)),
 
   /* Danh mục, hồ sơ */
   getCatalog: () => send('GET', '/catalog'),

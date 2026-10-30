@@ -88,6 +88,12 @@ function findTicket(db, id) {
   return t;
 }
 
+const WORKING = [STATUS.DANG_KHAO_SAT, STATUS.CHO_DUYET_BAO_GIA, STATUS.DANG_THUC_HIEN];
+
+function requireWorking(t) {
+  if (!WORKING.includes(t.status)) throw new ApiError('Chỉ cập nhật ảnh và công việc khi đang khảo sát hoặc đang thực hiện.', 409);
+}
+
 function techOfUser(db, userId) {
   return db.technicians.find((t) => t.userId === userId);
 }
@@ -211,12 +217,23 @@ function createTicketRecord(db, data) {
   return t;
 }
 
-/** Hoàn tất phiếu: phát hành bảo hành (BR-07), xóa thông tin đăng nhập thiết bị (BR-12). */
+/** Mở bước thanh toán; không phát sinh chi phí thì hoàn tất luôn. */
+function openPayment(db, t, actor) {
+  const amount = amountDue(t, db.config) + (t.lateRescheduleFee || 0);
+  if (amount > 0) {
+    t.payment = { amount, method: null, status: 'CHO_THANH_TOAN' };
+    return;
+  }
+  t.payment = { amount: 0, method: null, status: 'MIEN_PHI', paidAt: nowIso() };
+  complete(db, t, actor, 'Không phát sinh chi phí');
+}
+
+/** Hoàn tất phiếu và phát hành bảo hành theo hạng mục (BR-07); phiếu bảo hành không phát hành bảo hành mới. */
 function complete(db, t, actor, note) {
   transition(db, t, STATUS.HOAN_TAT, actor, note);
   t.completedAt = nowIso();
   const start = Date.now();
-  t.quotes
+  (t.isWarranty ? [] : t.quotes)
     .filter((q) => q.status === 'DA_DUYET' || q.status === 'DUYET_MOT_PHAN')
     .flatMap((q) => q.items.filter((i) => i.selected && i.warrantyDays > 0))
     .forEach((i) => db.warranties.push({
@@ -410,11 +427,12 @@ export const mockApi = {
   cancelTicket: (id, { reason }) => respond((db) => {
     const user = requireRole(db, 'KHACH', 'DPV');
     const t = findTicket(db, id);
-    if (user.roles.includes('KHACH') && !user.roles.includes('DPV') && t.customerId !== user.id) throw new ApiError('Bạn không có quyền hủy phiếu này.', 403);
+    const byCustomer = t.customerId === user.id;
+    if (!byCustomer && !user.roles.includes('DPV')) throw new ApiError('Bạn không có quyền hủy phiếu này.', 403);
     const policy = cancellationPolicy(t, db.config);
     if (!policy.allowed) throw new ApiError(policy.reason, 409);
     if (!reason?.trim()) throw new ApiError('Vui lòng cho biết lý do hủy.');
-    t.cancel = { by: user.id, byName: user.name, reason: reason.trim(), fee: policy.fee, at: nowIso() };
+    t.cancel = { by: user.id, byName: user.name, reason: reason.trim(), fee: byCustomer ? policy.fee : 0, at: nowIso() };
     transition(db, t, STATUS.DA_HUY, user, reason.trim());
     return enrichTicket(db, t, user);
   }),
@@ -422,7 +440,8 @@ export const mockApi = {
   rescheduleTicket: (id, { slotStart }) => respond((db) => {
     const user = requireRole(db, 'KHACH', 'DPV');
     const t = findTicket(db, id);
-    if (user.roles.includes('KHACH') && !user.roles.includes('DPV') && t.customerId !== user.id) throw new ApiError('Bạn không có quyền đổi lịch phiếu này.', 403);
+    const byCustomer = t.customerId === user.id;
+    if (!byCustomer && !user.roles.includes('DPV')) throw new ApiError('Bạn không có quyền đổi lịch phiếu này.', 403);
     const policy = cancellationPolicy(t, db.config);
     if (!policy.allowed) throw new ApiError(policy.reason, 409);
     const err = validateSlot(slotStart, db.config);
@@ -435,11 +454,12 @@ export const mockApi = {
       t.assignment.appointmentAt = slotStart;
       notify(db, [techUserId(db, t.assignment.techId)], 'Khách đổi lịch hẹn', `Phiếu ${t.id} đổi lịch hẹn, vui lòng xem giờ mới.`, t.id);
     }
+    const fee = byCustomer ? policy.fee : 0;
     t.slotStart = slotStart;
-    t.lateRescheduleFee = (t.lateRescheduleFee || 0) + policy.fee;
+    t.lateRescheduleFee = (t.lateRescheduleFee || 0) + fee;
     t.version += 1;
     t.updatedAt = nowIso();
-    t.history.push({ status: t.status, at: t.updatedAt, by: user.name, note: `Đổi lịch hẹn${policy.fee ? ` (phí đổi lịch sát giờ ${policy.fee.toLocaleString('vi-VN')}đ)` : ''}` });
+    t.history.push({ status: t.status, at: t.updatedAt, by: user.name, note: `Đổi lịch hẹn${fee ? ` (phí đổi lịch sát giờ ${fee.toLocaleString('vi-VN')}đ)` : ''}` });
     notify(db, dispatcherIds(db).filter((x) => x !== user.id), 'Khách đổi lịch hẹn', `Phiếu ${t.id} đổi sang khung giờ mới.`, t.id);
     audit(db, user, 'DOI_LICH', t.id, slotStart);
     return enrichTicket(db, t, user);
@@ -465,7 +485,7 @@ export const mockApi = {
     if (ok) {
       t.acceptance = { result: 'DAT', at: nowIso() };
       transition(db, t, STATUS.CHO_THANH_TOAN, user, 'Khách nghiệm thu đạt');
-      t.payment = { amount: amountDue(t, db.config) + (t.lateRescheduleFee || 0), method: null, status: 'CHO_THANH_TOAN' };
+      openPayment(db, t, user);
     } else {
       if (!reason?.trim()) throw new ApiError('Vui lòng mô tả điểm chưa đạt để kỹ thuật viên xử lý lại.');
       t.acceptance = { result: 'CHUA_DAT', reason: reason.trim(), at: nowIso() };
@@ -518,7 +538,7 @@ export const mockApi = {
     const user = currentUser(db);
     return db.warranties
       .filter((w) => w.customerId === user.id)
-      .map((w) => ({ ...w, ...warrantyStatus(w), device: db.devices.find((d) => d.id === w.deviceId), claim: db.warrantyClaims.find((c) => c.warrantyId === w.id && c.status !== 'TU_CHOI') || null }))
+      .map((w) => ({ ...w, ...warrantyStatus(w), device: db.devices.find((d) => d.id === w.deviceId), claim: db.warrantyClaims.filter((c) => c.warrantyId === w.id).at(-1) || null }))
       .sort((a, b) => Number(b.valid) - Number(a.valid) || b.endAt.localeCompare(a.endAt));
   }, 150),
 
@@ -586,6 +606,7 @@ export const mockApi = {
     const t = findTicket(db, id);
     const tech = techOfUser(db, user.id);
     if (t.assignment?.techId !== tech?.id || t.status !== STATUS.DA_PHAN_CONG || t.assignment.result) throw new ApiError('Phân công này không còn chờ bạn phản hồi.', 409);
+    if (new Date(t.assignment.deadline).getTime() < Date.now()) throw new ApiError('Đã quá hạn phản hồi, phân công này sẽ được chuyển cho kỹ thuật viên khác.', 409);
     t.assignment.respondedAt = nowIso();
     if (accept) {
       t.assignment.result = 'NHAN';
@@ -624,7 +645,8 @@ export const mockApi = {
       items: items.map((it, i) => {
         const src = it.kind === 'service' ? db.services.find((s) => s.id === it.refId) : db.parts.find((p) => p.id === it.refId);
         if (!src) throw new ApiError('Hạng mục không còn trong danh mục.');
-        if (it.kind === 'part' && src.stock < it.qty) throw new ApiError(`Linh kiện "${src.name}" chỉ còn ${src.stock} trong kho.`);
+        const needed = items.filter((x) => x.kind === 'part' && x.refId === it.refId).reduce((sum, x) => sum + x.qty, 0);
+        if (it.kind === 'part' && src.stock < needed) throw new ApiError(`Linh kiện "${src.name}" chỉ còn ${src.stock} trong kho.`);
         return { id: `${t.id}-${t.quotes.length + 1}-${i}`, kind: it.kind, refId: src.id, name: src.name, qty: it.qty, unitPrice: t.isWarranty ? 0 : src.price, warrantyDays: src.warrantyDays, selected: true };
       }),
       note: note || '',
@@ -689,6 +711,7 @@ export const mockApi = {
     const user = requireRole(db, 'KTV');
     const t = findTicket(db, id);
     if (t.assignment?.techId !== techOfUser(db, user.id)?.id) throw new ApiError('Bạn không phụ trách phiếu này.', 403);
+    requireWorking(t);
     t.checklist = checklist;
     t.version += 1;
     return enrichTicket(db, t, user);
@@ -698,6 +721,7 @@ export const mockApi = {
     const user = requireRole(db, 'KTV');
     const t = findTicket(db, id);
     if (t.assignment?.techId !== techOfUser(db, user.id)?.id) throw new ApiError('Bạn không phụ trách phiếu này.', 403);
+    requireWorking(t);
     const key = kind === 'before' ? 'photosBefore' : 'photosAfter';
     if (t[key].length + photos.length > 6) throw new ApiError('Mỗi loại ảnh tối đa 6 ảnh.');
     t[key] = [...t[key], ...photos];
@@ -709,6 +733,7 @@ export const mockApi = {
     const user = requireRole(db, 'KTV');
     const t = findTicket(db, id);
     if (t.assignment?.techId !== techOfUser(db, user.id)?.id) throw new ApiError('Bạn không phụ trách phiếu này.', 403);
+    requireWorking(t);
     const key = kind === 'before' ? 'photosBefore' : 'photosAfter';
     t[key] = t[key].filter((_, i) => i !== index);
     return enrichTicket(db, t, user);
@@ -785,11 +810,10 @@ export const mockApi = {
 
   listPayments: () => respond((db) => {
     requireRole(db, 'DPV', 'QTV');
-    return db.tickets
-      .filter((t) => t.payment && ['CHO_XAC_NHAN', 'DA_THU', 'DA_XAC_NHAN', 'DA_DOI_SOAT'].includes(t.payment.status))
-      .sort((a, b) => (b.payment.paidAt || '').localeCompare(a.payment.paidAt || ''))
-      .slice(0, 60)
-      .map((t) => enrichTicket(db, t, null));
+    const byPaidAt = (a, b) => (b.payment.paidAt || '').localeCompare(a.payment.paidAt || '');
+    const pending = db.tickets.filter((t) => ['CHO_XAC_NHAN', 'DA_THU'].includes(t.payment?.status)).sort(byPaidAt);
+    const done = db.tickets.filter((t) => ['DA_XAC_NHAN', 'DA_DOI_SOAT'].includes(t.payment?.status)).sort(byPaidAt).slice(0, 60);
+    return [...pending, ...done].map((t) => enrichTicket(db, t, null));
   }, 160),
 
   confirmTransfer: (id) => respond((db) => {
@@ -1001,16 +1025,17 @@ function applyQuoteDecision(db, t, q, actor, decision, itemIds, reason) {
     q.rejectReason = reason.trim();
     q.items.forEach((i) => { i.selected = false; });
     if (q.type === 'CHINH') {
-      transition(db, t, STATUS.CHO_THANH_TOAN, actor, t.isWarranty ? 'Khách từ chối báo giá' : `Khách từ chối báo giá, thu phí khảo sát`);
-      t.payment = { amount: amountDue(t, db.config) + (t.lateRescheduleFee || 0), method: null, status: 'CHO_THANH_TOAN' };
+      transition(db, t, STATUS.CHO_THANH_TOAN, actor, t.isWarranty ? 'Khách từ chối báo giá' : 'Khách từ chối báo giá, thu phí khảo sát');
+      openPayment(db, t, actor);
     } else {
       transition(db, t, STATUS.DANG_THUC_HIEN, actor, 'Khách từ chối báo giá bổ sung, tiếp tục hạng mục đã duyệt');
     }
     return;
   }
   if (decision === 'partial') {
-    if (!itemIds.length) throw new ApiError('Chọn ít nhất một hạng mục, hoặc chọn từ chối báo giá.');
-    q.items.forEach((i) => { i.selected = itemIds.includes(i.id); });
+    const chosen = q.items.filter((i) => itemIds.includes(i.id)).map((i) => i.id);
+    if (!chosen.length) throw new ApiError('Chọn ít nhất một hạng mục, hoặc chọn từ chối báo giá.');
+    q.items.forEach((i) => { i.selected = chosen.includes(i.id); });
     q.status = q.items.every((i) => i.selected) ? 'DA_DUYET' : 'DUYET_MOT_PHAN';
   } else {
     q.items.forEach((i) => { i.selected = true; });

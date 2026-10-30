@@ -139,7 +139,7 @@ export default function JobDetailPage() {
               </div>
             </Card>
           )}
-          {t.status === STATUS.HOAN_TAT && <Alert tone="success" title="Phiếu đã hoàn tất">{t.payment?.method === 'TIEN_MAT' ? `Đã thu tiền mặt ${money(t.payment.amount)}.` : 'Đã thanh toán chuyển khoản.'}</Alert>}
+          {t.status === STATUS.HOAN_TAT && <Alert tone="success" title="Phiếu đã hoàn tất">{t.payment?.status === 'MIEN_PHI' || !t.payment ? 'Không phát sinh chi phí.' : t.payment.method === 'TIEN_MAT' ? `Đã thu tiền mặt ${money(t.payment.amount)}.` : 'Đã thanh toán chuyển khoản.'}</Alert>}
 
           <Card title="Mô tả của khách">
             <div className="stack">
