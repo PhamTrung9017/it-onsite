@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useLoad } from '../../hooks/useApi.js';
+import { Download } from 'lucide-react';
+import { useAction, useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
-import { Card, ErrorState, Loading, PageHead, Segmented, Stars, StatusBadge } from '../../components/ui.jsx';
-import { money } from '../../lib/format.js';
+import { Button, Card, ErrorState, Loading, PageHead, Segmented, Stars, StatusBadge } from '../../components/ui.jsx';
+import { formatDate, money, toDateInput } from '../../lib/format.js';
+import { downloadReport } from '../../lib/reportExport.js';
 
 function Delta({ cur, prev, inverse, unit = '%' }) {
   if (!prev) return <div className="d faint">Chưa có kỳ trước để so sánh</div>;
@@ -13,12 +15,31 @@ function Delta({ cur, prev, inverse, unit = '%' }) {
 
 const short = (v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1).replace('.', ',')} tr` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v));
 
+const thisMonth = () => toDateInput(new Date()).slice(0, 7);
+
+function periodText(r, mode) {
+  if (!r?.period) return '';
+  const from = new Date(r.period.from);
+  const last = new Date(new Date(r.period.to).getTime() - 1);
+  const range = `${formatDate(from)} – ${formatDate(last)}`;
+  return mode === 'month' ? `Tháng ${from.getMonth() + 1}/${from.getFullYear()} · ${range}` : `${mode} ngày gần nhất · ${range}`;
+}
+
 export default function ReportsPage() {
-  const [days, setDays] = useState(30);
-  const { data: r, loading, error, reload } = useLoad(() => api.report({ days }), [days]);
+  const [mode, setMode] = useState(30);
+  const [month, setMonth] = useState(thisMonth);
+  const period = mode === 'month' ? { month } : { days: mode };
+  const { data: r, loading, error, reload } = useLoad(() => api.report(period), [mode, month]);
+  const { busy, run } = useAction();
+  const exportExcel = () => run('excel', async () => downloadReport({ report: r, data: await api.reportExport(period) }), 'Đã tải file Excel báo cáo.');
   return (
     <>
-      <PageHead title="Báo cáo thống kê" sub={`Số liệu ${days} ngày gần nhất`} actions={<Segmented label="Khoảng thời gian" value={days} onChange={setDays} options={[{ value: 7, label: '7 ngày' }, { value: 30, label: '30 ngày' }]} />} />
+      <PageHead title="Báo cáo thống kê" sub={periodText(r, mode)}
+        actions={<>
+          <Segmented label="Kỳ báo cáo" value={mode} onChange={setMode} options={[{ value: 7, label: '7 ngày' }, { value: 30, label: '30 ngày' }, { value: 'month', label: 'Theo tháng' }]} />
+          {mode === 'month' && <input type="month" className="input" style={{ width: 160 }} aria-label="Tháng báo cáo" value={month} max={thisMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} />}
+          <Button variant="outline" icon={Download} disabled={!r || loading} loading={busy === 'excel'} onClick={exportExcel}>Xuất Excel</Button>
+        </>} />
       {loading && <Loading rows={3} />}
       {error && <ErrorState error={error} onRetry={reload} />}
       {r && !loading && (
@@ -48,7 +69,7 @@ export default function ReportsPage() {
                   </div>
                 );
               })()}
-              <div className="tiny muted" style={{ marginTop: 8 }}>Cao nhất: {short(Math.max(...r.byDay.map((d) => d.revenue)))} · tính theo ngày phiếu hoàn tất</div>
+              <div className="tiny muted" style={{ marginTop: 8 }}>Cao nhất: {short(Math.max(0, ...r.byDay.map((d) => d.revenue)))} · tính theo ngày phiếu hoàn tất</div>
             </Card>
             <Card title="Loại sự cố">
               <div className="stack-sm">

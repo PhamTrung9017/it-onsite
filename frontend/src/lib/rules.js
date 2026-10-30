@@ -156,3 +156,15 @@ export function validateReview(stars, comment) {
 export function canComplete(ticket) {
   return (ticket.photosBefore?.length || 0) >= 1 && (ticket.photosAfter?.length || 0) >= 1;
 }
+
+/** Kỳ báo cáo (UC21) theo giờ địa phương: N ngày gần nhất tính cả hôm nay, hoặc một tháng dương lịch dạng "2026-10". */
+export function reportPeriod({ days, month }, now = new Date()) {
+  if (month) {
+    const [y, m] = month.split('-').map(Number);
+    const start = new Date(y, m - 1, 1);
+    return { kind: 'month', start, end: new Date(y, m, 1), prevStart: new Date(y, m - 2, 1), prevEnd: start };
+  }
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1);
+  const prevStart = new Date(start.getFullYear(), start.getMonth(), start.getDate() - days);
+  return { kind: 'days', start, end: now, prevStart, prevEnd: start };
+}

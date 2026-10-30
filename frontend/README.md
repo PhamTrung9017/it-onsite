@@ -90,9 +90,9 @@ frontend/
 | `.../thong-bao` | Thông báo trên web (mọi vai trò) | UC17 |
 | `/quan-tri/ky-thuat-vien` | Kỹ thuật viên: kỹ năng, khu vực, lịch làm việc, ngày nghỉ, khóa | UC18 |
 | `/quan-tri/dich-vu`, `/quan-tri/linh-kien` | Dịch vụ, bảng giá, linh kiện | UC19, UC20 |
-| `/quan-tri/bao-cao` | Báo cáo thống kê | UC21 |
+| `/quan-tri/bao-cao` | Báo cáo thống kê theo 7 ngày, 30 ngày hoặc theo tháng; xuất file Excel gồm tổng quan, doanh thu, bảng lương và hiệu suất kỹ thuật viên, đối soát, linh kiện, đánh giá, danh sách phiếu | UC21 |
 | `/quan-tri/tai-khoan` | Tài khoản nội bộ và phân quyền | UC22 |
-| `/quan-tri/cau-hinh`, `/quan-tri/nhat-ky` | Tham số nghiệp vụ, nhật ký hệ thống | UC23, NFR-08 |
+| `/quan-tri/cau-hinh`, `/quan-tri/nhat-ky` | Tham số nghiệp vụ (kể cả lương cứng, % hoa hồng kỹ thuật viên), nhật ký hệ thống | UC23, NFR-08 |
 
 ## Gọi API
 

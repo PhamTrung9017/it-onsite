@@ -29,6 +29,17 @@ export const STATUS_LABEL = {
   DA_HUY: 'Đã hủy',
 };
 
+export const PAYMENT_STATUS_LABEL = {
+  CHO_THANH_TOAN: 'Chờ thanh toán',
+  CHO_XAC_NHAN: 'Chờ xác nhận chuyển khoản',
+  DA_THU: 'Đã thu tiền mặt',
+  DA_XAC_NHAN: 'Đã xác nhận chuyển khoản',
+  DA_DOI_SOAT: 'Đã đối soát tiền mặt',
+  MIEN_PHI: 'Không phát sinh chi phí',
+};
+
+export const PAYMENT_METHOD_LABEL = { TIEN_MAT: 'Tiền mặt', CHUYEN_KHOAN: 'Chuyển khoản VietQR' };
+
 /** Thứ tự các bước trên dòng thời gian của phiếu (luồng chính). */
 export const MAIN_FLOW = [
   STATUS.MOI,

@@ -2,7 +2,7 @@
 import { AREAS, buildSeed } from './seed.js';
 import { canTransition, STATUS, STATUS_LABEL, BUSY_STATUSES, isClosed } from '../../lib/ticketStatus.js';
 import {
-  DEFAULT_SCHEDULE, amountDue, canComplete, cancellationPolicy, hasConflict, offDuty, rankTechnicians, responseDeadline,
+  DEFAULT_SCHEDULE, amountDue, canComplete, cancellationPolicy, hasConflict, offDuty, rankTechnicians, reportPeriod, responseDeadline,
   reviewPolicy, validateReview, validateSchedule, validateSlot, warrantyStatus,
 } from '../../lib/rules.js';
 import { classifyIssue, redactPersonalData } from '../../lib/classifier.js';
@@ -241,6 +241,18 @@ function complete(db, t, actor, note) {
       name: i.name, startAt: new Date(start).toISOString(), endAt: new Date(start + i.warrantyDays * DAY).toISOString(),
     }));
   notify(db, [t.customerId], 'Phiếu đã hoàn tất', `Cảm ơn bạn! Phiếu ${t.id} đã hoàn tất. Bạn có thể đánh giá dịch vụ trong ${db.config.reviewWindowDays} ngày.`, t.id);
+}
+
+/** Kỳ báo cáo hợp lệ như backend: 7, 30, 90 ngày hoặc một tháng không ở tương lai. */
+function mockPeriod({ days, month }, now) {
+  if (month) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new ApiError('Tháng báo cáo không hợp lệ.');
+    const period = reportPeriod({ month }, now);
+    if (period.start > now) throw new ApiError('Chưa có số liệu cho tháng này.');
+    return period;
+  }
+  if (![7, 30, 90].includes(days)) throw new ApiError('Khoảng thời gian báo cáo không hợp lệ.');
+  return reportPeriod({ days }, now);
 }
 
 /* ---------- API ---------- */
@@ -758,7 +770,7 @@ export const mockApi = {
     const t = findTicket(db, id);
     if (t.assignment?.techId !== techOfUser(db, user.id)?.id) throw new ApiError('Bạn không phụ trách phiếu này.', 403);
     if (t.status !== STATUS.CHO_THANH_TOAN || t.payment?.status !== 'CHO_THANH_TOAN') throw new ApiError('Phiếu không chờ thu tiền mặt.', 409);
-    t.payment = { ...t.payment, method: 'TIEN_MAT', status: 'DA_THU', paidAt: nowIso(), confirmedBy: user.id, confirmedByName: user.name };
+    t.payment = { ...t.payment, method: 'TIEN_MAT', status: 'DA_THU', paidAt: nowIso(), confirmedBy: user.id, confirmedByName: user.name, confirmedAt: nowIso() };
     complete(db, t, user, `Đã thu tiền mặt ${t.payment.amount.toLocaleString('vi-VN')}đ`);
     notify(db, dispatcherIds(db), 'Tiền mặt cần đối soát', `${user.name} đã thu ${t.payment.amount.toLocaleString('vi-VN')}đ phiếu ${t.id}.`, t.id);
     return enrichTicket(db, t, user);
@@ -807,6 +819,7 @@ export const mockApi = {
     if (offDuty(tech.schedule, appointmentAt, t.estimatedMinutes)) throw new ApiError('Giờ hẹn nằm ngoài lịch làm việc của kỹ thuật viên này.', 409);
     if (hasConflict(tech.id, appointmentAt, t.estimatedMinutes, db.tickets, db.config, t.id)) throw new ApiError('Kỹ thuật viên bị trùng lịch ở khung giờ này (BR-04).', 409);
     const assignedAt = nowIso();
+    if (t.assignment) t.assignmentLog = [...(t.assignmentLog || []), t.assignment];
     t.assignment = { techId, appointmentAt, assignedAt, deadline: responseDeadline(assignedAt, db.config), result: null, respondedAt: null };
     const techName = db.users.find((u) => u.id === tech.userId)?.name;
     transition(db, t, STATUS.DA_PHAN_CONG, user, `Phân công ${techName}`);
@@ -979,50 +992,99 @@ export const mockApi = {
     if (cfg.serviceHours.start >= cfg.serviceHours.end) throw new ApiError('Giờ bắt đầu phục vụ phải trước giờ kết thúc.');
     if (!cfg.areas.length) throw new ApiError('Cần ít nhất một khu vực phục vụ.');
     if (!/^\d{6}$/.test(cfg.bank.bin) || !/^\d{6,19}$/.test(cfg.bank.accountNumber)) throw new ApiError('Mã BIN gồm 6 chữ số, số tài khoản gồm 6–19 chữ số.');
-    db.config = { ...db.config, ...cfg, surveyFee: n(cfg.surveyFee), freeCancelHours: n(cfg.freeCancelHours), techResponseMinutes: n(cfg.techResponseMinutes), travelBufferMinutes: n(cfg.travelBufferMinutes), reviewWindowDays: n(cfg.reviewWindowDays) };
+    const payroll = { baseSalary: n(cfg.payroll?.baseSalary ?? 0), commissionPercent: n(cfg.payroll?.commissionPercent ?? 0) };
+    if (!(payroll.baseSalary >= 0) || !(payroll.commissionPercent >= 0 && payroll.commissionPercent <= 100)) throw new ApiError('Các tham số phải là số hợp lệ.');
+    db.config = { ...db.config, ...cfg, surveyFee: n(cfg.surveyFee), freeCancelHours: n(cfg.freeCancelHours), techResponseMinutes: n(cfg.techResponseMinutes), travelBufferMinutes: n(cfg.travelBufferMinutes), reviewWindowDays: n(cfg.reviewWindowDays), payroll };
     audit(db, user, 'CAU_HINH', 'tham số nghiệp vụ');
     return db.config;
   }),
 
-  report: ({ days }) => respond((db) => {
+  report: (params) => respond((db) => {
     requireRole(db, 'QTV');
-    const since = Date.now() - days * DAY;
-    const prevSince = since - days * DAY;
-    const inRange = (t, a, b) => { const x = new Date(t.createdAt).getTime(); return x >= a && x < b; };
-    const cur = db.tickets.filter((t) => inRange(t, since, Infinity));
-    const prev = db.tickets.filter((t) => inRange(t, prevSince, since));
-    const revenueOf = (list) => list.filter((t) => t.status === STATUS.HOAN_TAT && t.payment).reduce((s, t) => s + t.payment.amount, 0);
-    const doneOf = (list) => list.filter((t) => t.status === STATUS.HOAN_TAT);
-    const avgHours = (list) => {
-      const done = doneOf(list);
-      if (!done.length) return 0;
-      return done.reduce((s, t) => s + (new Date(t.completedAt) - new Date(t.createdAt)), 0) / done.length / 3600000;
-    };
-    const reviews = cur.filter((t) => t.review);
-    const byDay = [];
-    for (let i = days - 1; i >= 0; i -= 1) {
-      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
-      const next = d.getTime() + DAY;
-      byDay.push({ date: d.toISOString(), revenue: db.tickets.filter((t) => t.status === STATUS.HOAN_TAT && t.completedAt && new Date(t.completedAt).getTime() >= d.getTime() && new Date(t.completedAt).getTime() < next).reduce((s, t) => s + (t.payment?.amount || 0), 0) });
-    }
-    const byStatus = Object.keys(STATUS_LABEL).map((s) => ({ status: s, count: cur.filter((t) => t.status === s).length })).filter((x) => x.count);
-    const byCategory = db.categories.map((c) => ({ name: c.name, count: cur.filter((t) => t.categoryCode === c.code).length })).filter((x) => x.count).sort((a, b) => b.count - a.count);
-    const byTech = db.technicians.map((tech) => {
-      const list = cur.filter((t) => t.assignment?.techId === tech.id);
+    const now = new Date();
+    const p = mockPeriod(params, now);
+    const at = (v) => (v ? new Date(v).getTime() : NaN);
+    const within = (v, a, b) => at(v) >= a.getTime() && at(v) < b.getTime();
+    const created = db.tickets.filter((t) => within(t.createdAt, p.start, p.end));
+    const completedIn = (a, b) => db.tickets.filter((t) => t.status === STATUS.HOAN_TAT && within(t.completedAt, a, b));
+    const completed = completedIn(p.start, p.end);
+    const completedPrev = completedIn(p.prevStart, p.prevEnd);
+    const revenueOf = (list) => list.reduce((s, t) => s + (t.payment?.amount || 0), 0);
+    const avgHours = (list) => (list.length ? list.reduce((s, t) => s + (at(t.completedAt) - at(t.createdAt)), 0) / list.length / 3600000 : 0);
+    const avgStars = (list) => {
       const rv = list.filter((t) => t.review);
-      return { name: db.users.find((u) => u.id === tech.userId)?.name, done: doneOf(list).length, rating: rv.length ? rv.reduce((s, t) => s + t.review.stars, 0) / rv.length : null, revenue: revenueOf(list) };
-    }).filter((x) => x.done || x.rating);
+      return rv.length ? rv.reduce((s, t) => s + t.review.stars, 0) / rv.length : null;
+    };
+    const byDay = [];
+    const last = Math.min(p.end.getTime(), now.getTime());
+    for (let d = new Date(p.start); d.getTime() < last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+      byDay.push({ date: d.toISOString(), revenue: revenueOf(completed.filter((t) => within(t.completedAt, d, next))) });
+    }
+    const byStatus = Object.keys(STATUS_LABEL).map((s) => ({ status: s, count: created.filter((t) => t.status === s).length })).filter((x) => x.count);
+    const byCategory = db.categories.map((c) => ({ name: c.name, count: created.filter((t) => t.categoryCode === c.code).length })).filter((x) => x.count).sort((a, b) => b.count - a.count);
+    const byTech = db.technicians.map((tech) => {
+      const mine = completed.filter((t) => t.assignment?.techId === tech.id);
+      return { name: db.users.find((u) => u.id === tech.userId)?.name, done: mine.length, rating: avgStars(mine), revenue: revenueOf(mine) };
+    }).filter((x) => x.done);
     return {
-      revenue: revenueOf(cur), revenuePrev: revenueOf(prev),
-      done: doneOf(cur).length, donePrev: doneOf(prev).length,
-      avgHours: avgHours(cur), avgHoursPrev: avgHours(prev),
-      rating: reviews.length ? reviews.reduce((s, t) => s + t.review.stars, 0) / reviews.length : null,
-      reviewCount: reviews.length,
-      cancelled: cur.filter((t) => t.status === STATUS.DA_HUY).length,
-      total: cur.length,
+      period: { kind: p.kind, from: p.start.toISOString(), to: new Date(last).toISOString() },
+      revenue: revenueOf(completed), revenuePrev: revenueOf(completedPrev),
+      done: completed.length, donePrev: completedPrev.length,
+      avgHours: avgHours(completed), avgHoursPrev: avgHours(completedPrev),
+      rating: avgStars(completed),
+      reviewCount: completed.filter((t) => t.review).length,
+      cancelled: created.filter((t) => t.status === STATUS.DA_HUY).length,
+      total: created.length,
       byDay, byStatus, byCategory, byTech,
     };
   }, 220),
+
+  reportExport: (params) => respond((db) => {
+    requireRole(db, 'QTV');
+    const now = new Date();
+    const p = mockPeriod(params, now);
+    const within = (v) => Boolean(v) && new Date(v).getTime() >= p.start.getTime() && new Date(v).getTime() < p.end.getTime();
+    const assignmentsOf = (t) => [...(t.assignmentLog || []), ...(t.assignment ? [t.assignment] : [])];
+    const related = (t) => within(t.createdAt) || within(t.completedAt) || assignmentsOf(t).some((a) => within(a.assignedAt))
+      || ['CHO_THANH_TOAN', 'CHO_XAC_NHAN', 'DA_THU'].includes(t.payment?.status);
+    const amountsOf = (t) => {
+      const items = t.quotes.filter((q) => q.status === 'DA_DUYET' || q.status === 'DUYET_MOT_PHAN').flatMap((q) => q.items.filter((i) => i.selected));
+      const sum = (list) => list.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+      const lateFee = t.lateRescheduleFee || 0;
+      const rejected = t.quotes.some((q) => q.type === 'CHINH' && q.status === 'TU_CHOI');
+      return {
+        serviceAmount: sum(items.filter((i) => i.kind !== 'part')),
+        partsAmount: sum(items.filter((i) => i.kind === 'part')),
+        surveyFee: t.payment && rejected && !t.isWarranty ? Math.max(t.payment.amount - lateFee, 0) : 0,
+        lateFee,
+        parts: items.filter((i) => i.kind === 'part').map((i) => ({ name: i.name, qty: i.qty, unitPrice: i.unitPrice })),
+      };
+    };
+    return {
+      period: { kind: p.kind, from: p.start.toISOString(), to: new Date(Math.min(p.end.getTime(), now.getTime())).toISOString() },
+      payroll: db.config.payroll || { baseSalary: 0, commissionPercent: 0 },
+      technicians: db.technicians.map((k) => ({ id: k.id, name: db.users.find((u) => u.id === k.userId)?.name || '', active: k.active })),
+      tickets: db.tickets.filter(related).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((t) => ({
+        id: t.id,
+        createdAt: t.createdAt,
+        completedAt: t.completedAt || null,
+        customer: db.users.find((u) => u.id === t.customerId)?.name || '',
+        ward: t.ward,
+        category: db.categories.find((c) => c.code === t.categoryCode)?.name || '',
+        urgency: t.urgency,
+        status: t.status,
+        isWarranty: Boolean(t.isWarranty),
+        techId: t.assignment?.techId ?? null,
+        appointmentAt: t.assignment?.appointmentAt || t.slotStart,
+        ...amountsOf(t),
+        amount: t.payment ? t.payment.amount : null,
+        payment: t.payment ? { method: t.payment.method, status: t.payment.status, paidAt: t.payment.paidAt || null, confirmedAt: t.payment.confirmedAt || null, reconciledAt: t.payment.reconciledAt || null } : null,
+        review: t.review ? { stars: t.review.stars, comment: t.review.comment || '', at: t.review.at } : null,
+        assignments: assignmentsOf(t).map((a) => ({ techId: a.techId, assignedAt: a.assignedAt, result: a.result, respondedAt: a.respondedAt })),
+      })),
+    };
+  }, 260),
 };
 
 function applyQuoteDecision(db, t, q, actor, decision, itemIds, reason) {

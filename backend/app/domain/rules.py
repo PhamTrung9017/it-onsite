@@ -27,11 +27,14 @@ class BusinessConfig:
     bank_bin: str = ""
     bank_account_number: str = ""
     bank_account_name: str = ""
+    base_salary: int = 0
+    commission_percent: float = 0
 
     @classmethod
     def from_dict(cls, data: dict) -> "BusinessConfig":
         hours = data.get("serviceHours", {})
         bank = data.get("bank", {})
+        payroll = data.get("payroll", {})
         return cls(
             survey_fee=int(data["surveyFee"]),
             free_cancel_hours=int(data["freeCancelHours"]),
@@ -46,6 +49,8 @@ class BusinessConfig:
             bank_bin=bank.get("bin", ""),
             bank_account_number=bank.get("accountNumber", ""),
             bank_account_name=bank.get("accountName", ""),
+            base_salary=int(payroll.get("baseSalary", 0)),
+            commission_percent=float(payroll.get("commissionPercent", 0)),
         )
 
     def to_dict(self) -> dict:
@@ -64,6 +69,7 @@ class BusinessConfig:
                 "accountNumber": self.bank_account_number,
                 "accountName": self.bank_account_name,
             },
+            "payroll": {"baseSalary": self.base_salary, "commissionPercent": self.commission_percent},
         }
 
 
