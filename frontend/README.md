@@ -2,7 +2,10 @@
 
 Giao diện web của IT OnSite, xây dựng bằng React 18 và Vite 5. Khách hàng và kỹ thuật viên dùng giao diện ưu tiên điện thoại; điều phối viên và quản trị viên dùng giao diện có thanh điều hướng bên trái.
 
-Hiện tại giao diện chạy trên **lớp API giả lập** (`src/services/mock`), dữ liệu lưu trong `localStorage` của trình duyệt. Lớp giả lập cài đặt đầy đủ máy trạng thái phiếu và các quy tắc nghiệp vụ trong SRS, nên cả nhóm có thể chạy thử toàn bộ quy trình trước khi backend FastAPI hoàn thành. Khi backend sẵn sàng, chỉ cần thay `src/services/api.js`.
+Giao diện chạy được theo hai cách:
+
+- **Gọi backend thật** (`src/services/http`): đặt `VITE_API_URL=/api`. Vite chuyển tiếp `/api` và `/media` tới backend ở `VITE_PROXY_TARGET` (mặc định http://localhost:8000).
+- **Dữ liệu giả lập** (`src/services/mock`): để trống `VITE_API_URL`. Dữ liệu lưu trong `localStorage` của trình duyệt, áp dụng cùng máy trạng thái và quy tắc nghiệp vụ như backend; dùng để trình bày giao diện khi không có máy chủ.
 
 ## Chạy thử
 
@@ -11,10 +14,11 @@ Yêu cầu Node.js 18 trở lên.
 ```bash
 cd frontend
 npm install
+cp .env.example .env       # bỏ dòng VITE_API_URL nếu muốn chạy bằng dữ liệu giả lập
 npm run dev
 ```
 
-Mở http://localhost:5173.
+Mở http://localhost:5173. Khi gọi backend thật, chạy backend trước theo hướng dẫn trong `backend/README.md`.
 
 | Lệnh | Tác dụng |
 |---|---|
@@ -23,13 +27,14 @@ Mở http://localhost:5173.
 | `npm run preview` | Chạy thử bản đã đóng gói tại http://localhost:4173 |
 | `npm run lint` | Kiểm tra mã nguồn bằng ESLint |
 | `npm test` | Kiểm thử đơn vị các quy tắc nghiệp vụ (Vitest) |
-| `npm run test:e2e` | Kiểm thử đầu-cuối trên trình duyệt (Playwright) |
+| `npm run test:e2e` | Kiểm thử đầu-cuối trên trình duyệt với dữ liệu giả lập (Playwright) |
+| `npm run test:e2e:backend` | Kiểm thử đầu-cuối với backend thật đang chạy ở cổng 8000; nạp lại dữ liệu trình diễn trước mỗi kịch bản |
 
 Lần đầu chạy kiểm thử đầu-cuối cần cài trình duyệt: `npx playwright install chromium`.
 
 ## Tài khoản dùng thử
 
-Mật khẩu chung: `123456`. Trang đăng nhập có sẵn nút đăng nhập nhanh cho 4 vai trò.
+Có sau khi nạp dữ liệu trình diễn (`python -m app.seed demo` ở backend) hoặc khi chạy bằng dữ liệu giả lập. Mật khẩu chung: `123456`. Nút đăng nhập nhanh hiện khi chạy dữ liệu giả lập hoặc khi đặt `VITE_DEMO_ACCOUNTS=true`.
 
 | Vai trò | Email | Ghi chú |
 |---|---|---|
@@ -38,7 +43,7 @@ Mật khẩu chung: `123456`. Trang đăng nhập có sẵn nút đăng nhập n
 | Điều phối viên | dpv@demo.vn | |
 | Quản trị viên | qtv@demo.vn | Có thêm vai trò điều phối viên, đổi vai trò ở menu tài khoản |
 
-Dữ liệu mẫu gồm 30 ngày lịch sử phiếu để màn hình báo cáo có số liệu. Muốn quay về trạng thái ban đầu, chọn **Khôi phục dữ liệu mẫu** trong menu tài khoản. Số tài khoản ngân hàng trong mã VietQR là số mẫu, chưa phải tài khoản thật.
+Dữ liệu trình diễn gồm 30 ngày lịch sử phiếu để màn hình báo cáo có số liệu. Với dữ liệu giả lập, chọn **Khôi phục dữ liệu mẫu** trong menu tài khoản để quay về trạng thái ban đầu. Số tài khoản ngân hàng trong mã VietQR là số mẫu, quản trị viên đổi trong màn hình cấu hình tham số.
 
 ## Cấu trúc thư mục
 
@@ -58,7 +63,8 @@ frontend/
     │   ├── dispatcher/      Điều phối viên
     │   └── admin/           Quản trị viên
     ├── services/
-    │   ├── api.js           Điểm đổi giữa API giả lập và API thật
+    │   ├── api.js           Chọn API thật hoặc API giả lập theo VITE_API_URL
+    │   ├── http/            Gọi REST API, gắn JWT, tự làm mới phiên
     │   └── mock/            Dữ liệu mẫu và API giả lập
     └── styles/
 ```
@@ -67,7 +73,7 @@ frontend/
 
 | Đường dẫn | Màn hình | Use case |
 |---|---|---|
-| `/dang-nhap`, `/dang-ky`, `/quen-mat-khau` | Đăng nhập, đăng ký, quên mật khẩu | UC01 |
+| `/dang-nhap`, `/dang-ky`, `/quen-mat-khau`, `/dat-lai-mat-khau` | Đăng nhập, đăng ký, quên và đặt lại mật khẩu | UC01 |
 | `/`, `/bang-gia` | Trang chủ, bảng giá dịch vụ | UC03 |
 | `/khach/ho-so` | Hồ sơ, thiết bị, tải về và yêu cầu xóa dữ liệu | UC02 |
 | `/khach/tao-yeu-cau` | Đặt lịch 3 bước, gợi ý loại sự cố | UC04, UC05 |
@@ -87,48 +93,14 @@ frontend/
 | `/quan-tri/tai-khoan` | Tài khoản nội bộ và phân quyền | UC22 |
 | `/quan-tri/cau-hinh`, `/quan-tri/nhat-ky` | Tham số nghiệp vụ, nhật ký hệ thống | UC23, NFR-08 |
 
-## Quy tắc nghiệp vụ đã cài đặt
+## Gọi API
 
-| Mã | Nơi cài đặt |
-|---|---|
-| BR-01, BR-13 | Báo giá cố định đơn giá lúc lập; hạng mục phát sinh qua báo giá bổ sung (`mockApi.createQuote`) |
-| BR-02 | Phí khảo sát chỉ thu khi từ chối báo giá (`lib/rules.js` – `amountDue`) |
-| BR-03 | Hủy, đổi lịch miễn phí trước mốc cấu hình; không hủy sau check-in (`cancellationPolicy`) |
-| BR-04, BR-05 | Kiểm tra trùng lịch có thời gian đệm; xếp hạng kỹ thuật viên gợi ý (`hasConflict`, `rankTechnicians`) |
-| BR-06 | Hết hạn phản hồi thì tự thu hồi phân công (`mockApi` – `sweep`) |
-| BR-07 | Bảo hành theo từng hạng mục, tính từ ngày hoàn tất (`warrantyStatus`) |
-| BR-08 | Chuyển khoản: hoàn tất khi điều phối viên xác nhận. Tiền mặt: hoàn tất khi kỹ thuật viên xác nhận đã thu, điều phối viên đối soát cuối ngày |
-| BR-09 | Gợi ý loại sự cố chỉ để tham khảo; điều phối viên chốt loại sự cố |
-| BR-10 | Đánh giá một lần trong 7 ngày; từ 2 sao trở xuống bắt buộc nhập lý do |
-| BR-11 | Cần ít nhất 1 ảnh trước và 1 ảnh sau mới báo hoàn thành (`canComplete`) |
-| BR-12 | Thông tin đăng nhập máy chỉ kỹ thuật viên phụ trách xem, tự xóa khi phiếu kết thúc |
-| NFR-03 | Gợi ý loại sự cố quá 10 giây thì bỏ qua, không chặn tạo phiếu |
-| NFR-10 | Xin đồng ý khi đăng ký và khi tạo phiếu; che số điện thoại, email trước khi phân loại |
+Màn hình chỉ gọi qua đối tượng `api` trong `src/services/api.js`; `httpApi` và `mockApi` có cùng tên hàm và cùng dạng dữ liệu trả về. `httpApi` lưu access token và refresh token, tự làm mới khi access token hết hạn (NFR-05) và đưa người dùng về trang đăng nhập khi phiên kết thúc. Lỗi từ máy chủ được chuyển thành `ApiError` mang thông báo tiếng Việt để hiển thị.
 
-UC08 ngoại lệ 4a (hai điều phối viên thao tác cùng lúc) được xử lý bằng trường `version` của phiếu: thao tác trên dữ liệu cũ bị từ chối với mã 409.
-
-## Kết nối backend
-
-`src/services/api.js` xuất một đối tượng `api` có các hàm trả về `Promise`, ví dụ `api.createTicket(data)`, `api.assignTechnician(id, data)`. Các màn hình chỉ gọi qua đối tượng này. Để chuyển sang FastAPI:
-
-1. Viết `src/services/http/httpApi.js` cài cùng tên hàm, gọi REST API theo `openapi.yaml`, gắn JWT và tự làm mới token (NFR-05).
-2. Ném `ApiError(message, status)` khi API trả lỗi để màn hình hiển thị đúng thông báo.
-3. Trong `api.js`, chọn `httpApi` khi có biến môi trường `VITE_API_URL`, ngược lại dùng `mockApi`.
-
-Các phần lớp giả lập đang làm thay và backend phải đảm nhận:
-
-| Phần việc | Ở backend |
-|---|---|
-| Băm mật khẩu, JWT, phân quyền | NFR-04, NFR-05 |
-| Thu hồi phân công quá hạn (BR-06) | Tác vụ chạy định kỳ |
-| Phân loại sự cố | Gọi Gemini API, che dữ liệu cá nhân trước khi gửi |
-| Mã hóa thông tin đăng nhập máy | AES-256 (NFR-07) |
-| Tạo chuỗi VietQR | Có thể giữ ở frontend hoặc chuyển sang backend |
-| Lưu ảnh | Lưu tệp ở máy chủ, chỉ trả về đường dẫn |
-| Thông báo | Gửi thêm qua Telegram, email, có hàng đợi gửi lại (NFR-14) |
+Quy tắc nghiệp vụ được kiểm tra ở backend; `src/lib` giữ bản dùng cho giao diện (hiển thị phí hủy, trạng thái nút) và cho dữ liệu giả lập.
 
 ## Kiểm thử
 
 - `src/lib/lib.test.js`: 17 ca kiểm thử đơn vị cho máy trạng thái, phí, trùng lịch, xếp hạng kỹ thuật viên, bảo hành, đánh giá, VietQR (CRC-16), phân loại sự cố.
-- `e2e/luong-nghiep-vu.spec.js`: chạy trọn quy trình từ khách đặt lịch tới bảo hành qua 4 vai trò, nhánh từ chối báo giá, quá hạn phản hồi, hủy phiếu, phân quyền.
+- `e2e/luong-nghiep-vu.spec.js`: chạy trọn quy trình từ khách đặt lịch tới bảo hành qua 4 vai trò, nhánh từ chối báo giá, quá hạn phản hồi, hủy phiếu, phân quyền. Chạy được với cả dữ liệu giả lập và backend thật.
 - `e2e/giao-dien.spec.js`: mở mọi màn hình trên máy tính và điện thoại, kiểm tra không lỗi JavaScript và không tràn ngang.
