@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-10-30 01:27:44.752076
+Create Date: 2026-10-30 06:10:31.742756
 """
 
 from collections.abc import Sequence
@@ -61,6 +61,7 @@ def upgrade() -> None:
         sa.Column("stock", sa.Integer(), nullable=False),
         sa.Column("warranty_days", sa.Integer(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False),
+        sa.CheckConstraint("price >= 0 AND stock >= 0 AND warranty_days >= 0", name="ck_parts_numbers"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -72,6 +73,7 @@ def upgrade() -> None:
         sa.Column("duration_min", sa.Integer(), nullable=False),
         sa.Column("warranty_days", sa.Integer(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False),
+        sa.CheckConstraint("price >= 0 AND duration_min > 0 AND warranty_days >= 0", name="ck_services_numbers"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -98,9 +100,10 @@ def upgrade() -> None:
         sa.Column("consent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("email"),
         sa.UniqueConstraint("telegram_link_code"),
     )
+    op.create_index("uq_users_email_lower", "users", [sa.literal_column("lower(email)")], unique=True)
+    op.create_index("uq_users_phone", "users", ["phone"], unique=True, postgresql_where=sa.text("phone <> ''"))
     op.create_table(
         "categories",
         sa.Column("code", sa.String(length=20), nullable=False),
@@ -173,6 +176,7 @@ def upgrade() -> None:
         sa.Column("rating", sa.Numeric(precision=2, scale=1), nullable=False),
         sa.Column("rating_count", sa.Integer(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False),
+        sa.CheckConstraint("rating BETWEEN 0 AND 5", name="ck_technicians_rating"),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["users.id"],
@@ -205,11 +209,17 @@ def upgrade() -> None:
         sa.Column("late_reschedule_fee", sa.Integer(), nullable=False),
         sa.Column("onsite_code_hash", sa.String(length=64), nullable=True),
         sa.Column("onsite_code_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("onsite_code_attempts", sa.SmallInteger(), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_warranty", sa.Boolean(), nullable=False),
         sa.Column("warranty_of", sa.String(length=20), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "status IN ('MOI', 'DA_TIEP_NHAN', 'DA_PHAN_CONG', 'KTV_DA_NHAN', 'DANG_KHAO_SAT', 'CHO_DUYET_BAO_GIA', 'DANG_THUC_HIEN', 'CHO_NGHIEM_THU', 'CHO_THANH_TOAN', 'HOAN_TAT', 'DA_HUY')",
+            name="ck_tickets_status",
+        ),
+        sa.CheckConstraint("urgency IN ('THAP', 'TRUNG_BINH', 'CAO')", name="ck_tickets_urgency"),
         sa.ForeignKeyConstraint(
             ["customer_id"],
             ["users.id"],
@@ -254,6 +264,7 @@ def upgrade() -> None:
         sa.Column("confirmed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("reconciled_by", sa.Integer(), nullable=True),
         sa.Column("reconciled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.CheckConstraint("amount >= 0", name="ck_payments_amount"),
         sa.ForeignKeyConstraint(
             ["confirmed_by"],
             ["users.id"],
@@ -303,6 +314,7 @@ def upgrade() -> None:
         sa.Column("stars", sa.SmallInteger(), nullable=False),
         sa.Column("comment", sa.Text(), nullable=False),
         sa.Column("at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint("stars BETWEEN 1 AND 5", name="ck_reviews_stars"),
         sa.ForeignKeyConstraint(["ticket_id"], ["tickets.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("ticket_id"),
     )
@@ -329,6 +341,7 @@ def upgrade() -> None:
         sa.Column("unit_price", sa.Integer(), nullable=False),
         sa.Column("warranty_days", sa.Integer(), nullable=False),
         sa.Column("selected", sa.Boolean(), nullable=False),
+        sa.CheckConstraint("qty > 0 AND unit_price >= 0", name="ck_quote_items_numbers"),
         sa.ForeignKeyConstraint(["quote_id"], ["quotes.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -421,6 +434,8 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_devices_customer_id"), table_name="devices")
     op.drop_table("devices")
     op.drop_table("categories")
+    op.drop_index("uq_users_phone", table_name="users", postgresql_where=sa.text("phone <> ''"))
+    op.drop_index("uq_users_email_lower", table_name="users")
     op.drop_table("users")
     op.drop_table("settings")
     op.drop_table("services")

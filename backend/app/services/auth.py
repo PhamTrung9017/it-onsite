@@ -22,6 +22,7 @@ from app.services.present import user_json
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.]+$")
 PHONE_RE = re.compile(r"^0\d{9}$")
 MIN_PASSWORD = 8
+MAX_PENDING_RESETS = 3
 
 
 def validate_email(email: str) -> str:
@@ -140,6 +141,13 @@ def request_password_reset(db: Session, email: str) -> None:
     user = db.scalar(select(User).where(func.lower(User.email) == email.strip().lower()))
     if user is None or user.locked:
         return
+    pending = db.scalar(
+        select(func.count())
+        .select_from(PasswordResetToken)
+        .where(PasswordResetToken.user_id == user.id, PasswordResetToken.used.is_(False), PasswordResetToken.expires_at > utcnow())
+    )
+    if pending >= MAX_PENDING_RESETS:
+        return
     token = new_opaque_token()
     db.add(
         PasswordResetToken(
@@ -179,12 +187,15 @@ def reset_password(db: Session, token: str, password: str) -> None:
     audit(db, user, "DAT_LAI_MAT_KHAU", str(user.id))
 
 
-def change_password(db: Session, user: User, current: str, new: str) -> None:
+def change_password(db: Session, user: User, current: str, new: str) -> dict:
+    """Đổi mật khẩu thì đăng xuất mọi thiết bị khác, cấp phiên mới cho thiết bị đang dùng."""
     if not verify_password(current, user.password_hash):
         raise ApiError("Mật khẩu hiện tại không đúng.")
     validate_new_password(new)
     user.password_hash = hash_password(new)
+    revoke_all_sessions(db, user)
     audit(db, user, "DOI_MAT_KHAU", str(user.id))
+    return issue_tokens(db, user)
 
 
 def revoke_all_sessions(db: Session, user: User) -> None:

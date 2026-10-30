@@ -3,8 +3,10 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     SmallInteger,
@@ -12,21 +14,27 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.domain.status import Status
 
 Timestamp = DateTime(timezone=True)
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("uq_users_email_lower", func.lower(text("email")), unique=True),
+        Index("uq_users_phone", "phone", unique=True, postgresql_where=text("phone <> ''")),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
-    email: Mapped[str] = mapped_column(String(160), unique=True)
+    email: Mapped[str] = mapped_column(String(160))
     phone: Mapped[str] = mapped_column(String(20), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
     roles: Mapped[list[str]] = mapped_column(ARRAY(String(10)))
@@ -65,6 +73,7 @@ class PasswordResetToken(Base):
 
 class Technician(Base):
     __tablename__ = "technicians"
+    __table_args__ = (CheckConstraint("rating BETWEEN 0 AND 5", name="ck_technicians_rating"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
@@ -88,6 +97,7 @@ class Setting(Base):
 
 class Service(Base):
     __tablename__ = "services"
+    __table_args__ = (CheckConstraint("price >= 0 AND duration_min > 0 AND warranty_days >= 0", name="ck_services_numbers"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(160))
@@ -109,6 +119,7 @@ class Category(Base):
 
 class Part(Base):
     __tablename__ = "parts"
+    __table_args__ = (CheckConstraint("price >= 0 AND stock >= 0 AND warranty_days >= 0", name="ck_parts_numbers"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(160))
@@ -131,6 +142,10 @@ class Device(Base):
 
 class Ticket(Base):
     __tablename__ = "tickets"
+    __table_args__ = (
+        CheckConstraint(f"status IN ({', '.join(repr(s.value) for s in Status)})", name="ck_tickets_status"),
+        CheckConstraint("urgency IN ('THAP', 'TRUNG_BINH', 'CAO')", name="ck_tickets_urgency"),
+    )
 
     id: Mapped[str] = mapped_column(String(20), primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -155,6 +170,7 @@ class Ticket(Base):
     late_reschedule_fee: Mapped[int] = mapped_column(Integer, default=0)
     onsite_code_hash: Mapped[str | None] = mapped_column(String(64))
     onsite_code_expires_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    onsite_code_attempts: Mapped[int] = mapped_column(SmallInteger, default=0)
     completed_at: Mapped[datetime | None] = mapped_column(Timestamp)
     is_warranty: Mapped[bool] = mapped_column(Boolean, default=False)
     warranty_of: Mapped[str | None] = mapped_column(String(20))
@@ -222,6 +238,7 @@ class Quote(Base):
 
 class QuoteItem(Base):
     __tablename__ = "quote_items"
+    __table_args__ = (CheckConstraint("qty > 0 AND unit_price >= 0", name="ck_quote_items_numbers"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     quote_id: Mapped[int] = mapped_column(ForeignKey("quotes.id", ondelete="CASCADE"), index=True)
@@ -246,6 +263,7 @@ class Photo(Base):
 
 class Payment(Base):
     __tablename__ = "payments"
+    __table_args__ = (CheckConstraint("amount >= 0", name="ck_payments_amount"),)
 
     ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), primary_key=True)
     amount: Mapped[int] = mapped_column(Integer)
@@ -261,6 +279,7 @@ class Payment(Base):
 
 class Review(Base):
     __tablename__ = "reviews"
+    __table_args__ = (CheckConstraint("stars BETWEEN 1 AND 5", name="ck_reviews_stars"),)
 
     ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), primary_key=True)
     stars: Mapped[int] = mapped_column(SmallInteger)

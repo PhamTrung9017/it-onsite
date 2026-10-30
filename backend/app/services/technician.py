@@ -31,7 +31,15 @@ from app.services.tickets import apply_quote_decision
 
 MAX_WORK_PHOTOS = 6
 ONSITE_CODE_MINUTES = 10
+ONSITE_CODE_MAX_ATTEMPTS = 5
 RECENT_DAYS = 7
+WORKING_STATUSES = (Status.DANG_KHAO_SAT, Status.CHO_DUYET_BAO_GIA, Status.DANG_THUC_HIEN)
+
+
+def require_working(ticket: Ticket) -> None:
+    """Ảnh và danh sách công việc chỉ cập nhật trong lúc khảo sát, chờ duyệt và thực hiện."""
+    if ticket.status not in WORKING_STATUSES:
+        raise conflict("Chỉ cập nhật ảnh và công việc khi đang khảo sát hoặc đang thực hiện.")
 
 
 def list_my_jobs(db: Session, user: User) -> list[Ticket]:
@@ -58,6 +66,8 @@ def respond_assignment(db: Session, user: User, ticket_id: str, accept: bool, re
     assignment = ticket.assignment
     if tech is None or assignment is None or assignment.tech_id != tech.id or ticket.status != Status.DA_PHAN_CONG or assignment.result:
         raise conflict("Phân công này không còn chờ bạn phản hồi.")
+    if assignment.deadline < utcnow():
+        raise conflict("Đã quá hạn phản hồi, phân công này sẽ được chuyển cho kỹ thuật viên khác.")
     assignment.responded_at = utcnow()
     if accept:
         assignment.result = "NHAN"
@@ -90,13 +100,17 @@ def create_quote(db: Session, user: User, ticket_id: str, items: list, note: str
         raise ApiError("Báo giá cần ít nhất một hạng mục.")
     quote_type = "CHINH" if ticket.status == Status.DANG_KHAO_SAT else "BO_SUNG"
     quote = Quote(type=quote_type, status="CHO_DUYET", note=note.strip(), created_at=utcnow(), created_by=tech.id)
+    part_qty: dict[int, int] = {}
+    for item in items:
+        if item.kind == "part":
+            part_qty[item.ref_id] = part_qty.get(item.ref_id, 0) + item.qty
     for item in items:
         if item.qty < 1:
             raise ApiError("Số lượng phải từ 1 trở lên.")
         source = db.get(Service, item.ref_id) if item.kind == "service" else db.get(Part, item.ref_id)
         if source is None or not source.active:
             raise ApiError("Hạng mục không còn trong danh mục.")
-        if item.kind == "part" and source.stock < item.qty:
+        if item.kind == "part" and source.stock < part_qty[item.ref_id]:
             raise ApiError(f'Linh kiện "{source.name}" chỉ còn {source.stock} trong kho.')
         quote.items.append(
             QuoteItem(
@@ -110,7 +124,14 @@ def create_quote(db: Session, user: User, ticket_id: str, items: list, note: str
             )
         )
     ticket.quotes.append(quote)
-    transition(db, ticket, Status.CHO_DUYET_BAO_GIA, user, "Báo giá bổ sung" if quote_type == "BO_SUNG" else "")
+    transition(
+        db,
+        ticket,
+        Status.CHO_DUYET_BAO_GIA,
+        user,
+        "Báo giá bổ sung" if quote_type == "BO_SUNG" else "",
+        notified_separately=(ticket.customer_id,),
+    )
     title = "Có báo giá bổ sung" if quote_type == "BO_SUNG" else "Có báo giá mới"
     notify(db, [ticket.customer_id], title, f"Phiếu {ticket.id}: vui lòng xem và duyệt báo giá.", ticket.id)
     return ticket
@@ -125,6 +146,7 @@ def send_onsite_code(db: Session, user: User, ticket_id: str) -> dict:
     code = f"{secrets.randbelow(900000) + 100000}"
     ticket.onsite_code_hash = token_digest(code)
     ticket.onsite_code_expires_at = utcnow() + timedelta(minutes=ONSITE_CODE_MINUTES)
+    ticket.onsite_code_attempts = 0
     notify(
         db,
         [ticket.customer_id],
@@ -142,6 +164,12 @@ def confirm_onsite(db: Session, user: User, ticket_id: str, code: str) -> Ticket
     if not ticket.onsite_code_hash or not ticket.onsite_code_expires_at or ticket.onsite_code_expires_at < utcnow():
         raise conflict("Mã đã hết hạn, vui lòng gửi lại mã.")
     if token_digest(code.strip()) != ticket.onsite_code_hash:
+        ticket.onsite_code_attempts += 1
+        if ticket.onsite_code_attempts >= ONSITE_CODE_MAX_ATTEMPTS:
+            ticket.onsite_code_hash = None
+        db.commit()
+        if ticket.onsite_code_hash is None:
+            raise conflict("Nhập sai quá nhiều lần, mã đã bị hủy. Vui lòng gửi lại mã.")
         raise ApiError("Mã xác nhận không đúng.")
     quote = next((q for q in ticket.quotes if q.status == "CHO_DUYET"), None)
     if quote is None:
@@ -155,6 +183,7 @@ def confirm_onsite(db: Session, user: User, ticket_id: str, code: str) -> Ticket
 def update_checklist(db: Session, user: User, ticket_id: str, checklist: list[dict]) -> Ticket:
     ticket = find_ticket(db, ticket_id, lock=True)
     require_assigned_tech(db, user, ticket)
+    require_working(ticket)
     ticket.checklist = [{"text": str(i.get("text", ""))[:200], "done": bool(i.get("done"))} for i in checklist if i.get("text")]
     touch(ticket)
     return ticket
@@ -163,6 +192,7 @@ def update_checklist(db: Session, user: User, ticket_id: str, checklist: list[di
 def add_work_photos(db: Session, user: User, ticket_id: str, kind: str, photos: list[str]) -> Ticket:
     ticket = find_ticket(db, ticket_id, lock=True)
     require_assigned_tech(db, user, ticket)
+    require_working(ticket)
     if kind not in ("before", "after"):
         raise ApiError("Loại ảnh không hợp lệ.")
     if len(ticket.photos_of(kind)) + len(photos) > MAX_WORK_PHOTOS:
@@ -176,6 +206,7 @@ def add_work_photos(db: Session, user: User, ticket_id: str, kind: str, photos: 
 def remove_work_photo(db: Session, user: User, ticket_id: str, kind: str, index: int) -> Ticket:
     ticket = find_ticket(db, ticket_id, lock=True)
     require_assigned_tech(db, user, ticket)
+    require_working(ticket)
     photos = ticket.photos_of(kind)
     if not 0 <= index < len(photos):
         raise ApiError("Không tìm thấy ảnh.")

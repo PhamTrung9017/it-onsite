@@ -25,7 +25,9 @@ from app.services.common import (
 from app.services.tickets import bookings, create_ticket_record
 
 BOARD_RECENT_DAYS = 2
-PAYMENT_STATUSES = ("CHO_XAC_NHAN", "DA_THU", "DA_XAC_NHAN", "DA_DOI_SOAT")
+PENDING_PAYMENT_STATUSES = ("CHO_XAC_NHAN", "DA_THU")
+DONE_PAYMENT_STATUSES = ("DA_XAC_NHAN", "DA_DOI_SOAT")
+RECENT_PAYMENTS = 60
 
 
 def sweep_overdue_assignments(db: Session) -> int:
@@ -85,7 +87,13 @@ def suggest(db: Session, user: User, ticket_id: str, appointment_at: datetime) -
     require_roles(user, "DPV")
     ticket = find_ticket(db, ticket_id)
     config = load_config(db)
-    techs = {t.id: t for t in db.scalars(select(Technician).where(Technician.active.is_(True)))}
+    techs = {
+        t.id: t
+        for t in db.scalars(
+            select(Technician).join(User, User.id == Technician.user_id).where(Technician.active.is_(True), User.locked.is_(False))
+        )
+        if "KTV" in t.user.roles
+    }
     candidates = [Candidate(t.id, list(t.skills), list(t.areas), float(t.rating)) for t in techs.values()]
     ranked = rank_technicians(
         candidates,
@@ -111,7 +119,7 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
     if ticket.status != Status.DA_TIEP_NHAN:
         raise conflict("Chỉ phân công phiếu ở trạng thái Đã tiếp nhận.")
     tech = db.get(Technician, tech_id, with_for_update=True)
-    if tech is None or not tech.active:
+    if tech is None or not tech.active or tech.user.locked or "KTV" not in tech.user.roles:
         raise ApiError("Kỹ thuật viên không khả dụng.")
     now = utcnow()
     if appointment_at < now:
@@ -122,7 +130,7 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
     ticket.assignments.append(
         Assignment(tech_id=tech.id, appointment_at=appointment_at, assigned_at=now, deadline=response_deadline(now, config))
     )
-    transition(db, ticket, Status.DA_PHAN_CONG, user, f"Phân công {tech.user.name}")
+    transition(db, ticket, Status.DA_PHAN_CONG, user, f"Phân công {tech.user.name}", notified_separately=(tech.user_id,))
     notify(
         db,
         [tech.user_id],
@@ -134,16 +142,12 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
 
 
 def list_payments(db: Session, user: User) -> list[Ticket]:
+    """Mọi khoản đang chờ xử lý, kèm các khoản đã xong gần đây."""
     require_roles(user, "DPV", "QTV")
-    return list(
-        db.scalars(
-            select(Ticket)
-            .join(Payment, Payment.ticket_id == Ticket.id)
-            .where(Payment.status.in_(PAYMENT_STATUSES))
-            .order_by(Payment.paid_at.desc().nulls_last())
-            .limit(60)
-        )
-    )
+    base = select(Ticket).join(Payment, Payment.ticket_id == Ticket.id).order_by(Payment.paid_at.desc().nulls_last())
+    pending = db.scalars(base.where(Payment.status.in_(PENDING_PAYMENT_STATUSES))).all()
+    done = db.scalars(base.where(Payment.status.in_(DONE_PAYMENT_STATUSES)).limit(RECENT_PAYMENTS)).all()
+    return [*pending, *done]
 
 
 def confirm_transfer(db: Session, user: User, ticket_id: str) -> Ticket:
