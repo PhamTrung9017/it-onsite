@@ -49,17 +49,24 @@ export default function JobsPage() {
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   const today = new Date().toDateString();
-  const open = data.filter((j) => ![STATUS.HOAN_TAT, STATUS.DA_HUY].includes(j.status));
+  const isPending = (j) => j.status === STATUS.DA_PHAN_CONG && !j.assignment.result;
+  const pending = data.filter(isPending);
+  const open = data.filter((j) => !isPending(j) && ![STATUS.HOAN_TAT, STATUS.DA_HUY].includes(j.status));
   const groups = {
     today: open.filter((j) => new Date(j.assignment.appointmentAt).toDateString() === today || new Date(j.assignment.appointmentAt) < new Date()),
     later: open.filter((j) => new Date(j.assignment.appointmentAt).toDateString() !== today && new Date(j.assignment.appointmentAt) > new Date()),
     done: data.filter((j) => j.status === STATUS.HOAN_TAT),
   };
-  const pending = open.filter((j) => j.status === STATUS.DA_PHAN_CONG && !j.assignment.result).length;
   return (
     <>
-      <PageHead title="Lịch việc" sub={pending ? `${pending} việc mới chờ bạn nhận` : `${groups.today.length} việc hôm nay`} />
+      <PageHead title="Lịch việc" sub={pending.length ? `${pending.length} việc mới chờ bạn nhận` : `${groups.today.length} việc hôm nay`} />
       <div className="stack">
+        {pending.length > 0 && (
+          <section className="stack-sm" aria-label="Việc mới chờ phản hồi">
+            <h2 className="section-title">Việc mới chờ phản hồi</h2>
+            <div className="grid-2">{pending.map((j) => <JobCard key={j.id} job={j} />)}</div>
+          </section>
+        )}
         <Segmented label="Lọc lịch việc" value={tab} onChange={setTab} options={[
           { value: 'today', label: 'Hôm nay', count: groups.today.length },
           { value: 'later', label: 'Sắp tới', count: groups.later.length },
