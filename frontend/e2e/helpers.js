@@ -97,6 +97,14 @@ export async function warrantyTicketOf(page, ticketId) {
   return (await readMock(page)).tickets.find((t) => t.isWarranty && t.warrantyOf === ticketId);
 }
 
+/** Thông báo trên web của một tài khoản, mới nhất trước. */
+export async function notificationsOf(page, email) {
+  if (BACKEND) return request(page, '/notifications', email);
+  const db = await readMock(page);
+  const user = db.users.find((u) => u.email === email);
+  return db.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 /** Chờ phiếu chuyển sang trạng thái mong đợi rồi trả về phiếu. */
 export async function expectStatus(page, id, status) {
   await expect.poll(async () => (await getTicket(page, id))?.status, { message: `Trạng thái phiếu ${id}` }).toBe(status);

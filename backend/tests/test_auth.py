@@ -69,7 +69,23 @@ def test_password_reset_flow(client):
     assert Api(client, "khach@demo.vn", "matkhaumoi1").user["email"] == "khach@demo.vn"
 
 
-def test_change_password(client, khach):
+def test_change_password_signs_out_other_devices(client, khach):
+    other_device = Api(client, "khach@demo.vn")
     assert khach.post("/auth/change-password", {"current": "sai", "next": "matkhaumoi1"}).status_code == 400
-    assert khach.post("/auth/change-password", {"current": "123456", "next": "matkhaumoi1"}).status_code == 200
+    tokens = khach.ok("post", "/auth/change-password", {"current": "123456", "next": "matkhaumoi1"})
+    assert client.post("/api/auth/refresh", json={"refreshToken": other_device.tokens["refreshToken"]}).status_code == 401
+    assert client.post("/api/auth/refresh", json={"refreshToken": tokens["refreshToken"]}).status_code == 200
     Api(client, "khach@demo.vn", "matkhaumoi1")
+
+
+def test_password_reset_requests_are_limited(client):
+    for _ in range(5):
+        client.post("/api/auth/forgot-password", json={"email": "khach@demo.vn"})
+    with SessionLocal() as db:
+        sent = db.scalars(select(OutboxMessage).where(OutboxMessage.recipient == "khach@demo.vn")).all()
+    assert len(sent) == 3
+
+
+def test_email_is_unique_regardless_of_case(client):
+    body = {"name": "A", "email": "KHACH@Demo.vn", "phone": "0912345678", "password": "matkhau123", "consent": True}
+    assert client.post("/api/auth/register", json=body).status_code == 409
