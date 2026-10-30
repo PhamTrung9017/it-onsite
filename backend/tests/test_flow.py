@@ -37,7 +37,7 @@ def receive_and_assign(dpv: Api, ticket: dict) -> dict:
         "post", f"/tickets/{ticket['id']}/receive", {"categoryCode": ticket["categoryCode"], "urgency": "CAO", "version": ticket["version"]}
     )
     suggestions = dpv.ok("get", f"/tickets/{ticket['id']}/technician-suggestions?appointmentAt={received['slotStart'].replace('+', '%2B')}")
-    best = next(s for s in suggestions if not s["conflict"])
+    best = next(s for s in suggestions if not s["conflict"] and not s["offDuty"])
     return dpv.ok(
         "post",
         f"/tickets/{ticket['id']}/assign",

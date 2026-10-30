@@ -49,13 +49,13 @@ def list_devices(db: Session, user: User) -> list[dict]:
     return result
 
 
-def add_device(db: Session, user: User, device_type: str, brand: str, model: str) -> Device:
+def add_device(db: Session, user: User, device_type: str, brand: str, model: str, note: str = "") -> Device:
     require_roles(user, "KHACH")
     if device_type not in DEVICE_TYPES:
         raise ApiError("Loại thiết bị không hợp lệ.")
     if not brand.strip() or not model.strip():
         raise ApiError("Vui lòng nhập hãng và dòng máy.")
-    device = Device(customer_id=user.id, type=device_type, brand=brand.strip(), model=model.strip())
+    device = Device(customer_id=user.id, type=device_type, brand=brand.strip(), model=model.strip(), note=note.strip())
     db.add(device)
     db.flush()
     return device

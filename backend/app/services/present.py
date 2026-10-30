@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import decrypt_secret
-from app.domain.rules import BusinessConfig
+from app.domain.rules import BusinessConfig, WorkSchedule
 from app.models import Category, Device, Quote, Technician, Ticket, User
 from app.services.common import amount_due, tech_of_user
 
@@ -34,7 +34,14 @@ def user_json(user: User) -> dict:
 
 
 def device_json(device: Device) -> dict:
-    return {"id": device.id, "customerId": device.customer_id, "type": device.type, "brand": device.brand, "model": device.model}
+    return {
+        "id": device.id,
+        "customerId": device.customer_id,
+        "type": device.type,
+        "brand": device.brand,
+        "model": device.model,
+        "note": device.note,
+    }
 
 
 def category_json(category: Category) -> dict:
@@ -52,6 +59,7 @@ def tech_json(tech: Technician) -> dict:
         "rating": float(tech.rating),
         "ratingCount": tech.rating_count,
         "active": tech.active,
+        "schedule": WorkSchedule.from_dict(tech.schedule).to_dict(),
     }
 
 

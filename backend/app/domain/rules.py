@@ -3,12 +3,13 @@
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.domain.status import BUSY_STATUSES, CANCELLABLE, Status
 
 SLOT_LEAD_HOURS = 2
+MAX_DAYS_OFF = 60
 
 
 @dataclass
@@ -141,11 +142,66 @@ def has_conflict(
 
 
 @dataclass
+class WorkSchedule:
+    """Lịch làm việc của KTV (UC18): thứ trong tuần (1 = thứ Hai … 7 = Chủ nhật), giờ làm, ngày nghỉ."""
+
+    work_days: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 5, 6])
+    start: str = "08:00"
+    end: str = "20:00"
+    days_off: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "WorkSchedule":
+        if not data:
+            return cls()
+        return cls(
+            work_days=sorted({int(d) for d in data.get("workDays", [])}),
+            start=str(data.get("start", "08:00")),
+            end=str(data.get("end", "20:00")),
+            days_off=sorted({str(d) for d in data.get("daysOff", [])}),
+        )
+
+    def to_dict(self) -> dict:
+        return {"workDays": self.work_days, "start": self.start, "end": self.end, "daysOff": self.days_off}
+
+
+def validate_schedule(schedule: WorkSchedule) -> str | None:
+    if not schedule.work_days or any(d not in range(1, 8) for d in schedule.work_days):
+        return "Chọn ít nhất một ngày làm việc trong tuần."
+    try:
+        start, end = _minutes(schedule.start), _minutes(schedule.end)
+    except ValueError:
+        return "Giờ làm việc không hợp lệ."
+    if not 0 <= start < end <= 24 * 60:
+        return "Giờ bắt đầu làm việc phải trước giờ kết thúc."
+    try:
+        for day in schedule.days_off:
+            date.fromisoformat(day)
+    except ValueError:
+        return "Ngày nghỉ không hợp lệ."
+    if len(schedule.days_off) > MAX_DAYS_OFF:
+        return f"Chỉ lưu tối đa {MAX_DAYS_OFF} ngày nghỉ."
+    return None
+
+
+def off_duty(schedule: WorkSchedule, appointment_at: datetime, duration_min: int, tz: ZoneInfo) -> bool:
+    """Lịch hẹn rơi vào ngày nghỉ, ngày không làm hoặc vượt ngoài giờ làm của KTV."""
+    start = appointment_at.astimezone(tz)
+    end = start + timedelta(minutes=duration_min)
+    if start.date().isoformat() in schedule.days_off or start.isoweekday() not in schedule.work_days:
+        return True
+    if end.date() != start.date():
+        return True
+    return not (_minutes(schedule.start) <= start.hour * 60 + start.minute and end.hour * 60 + end.minute <= _minutes(schedule.end))
+
+
+@dataclass
 class Candidate:
     tech_id: int
     skills: list[str]
     areas: list[str]
     rating: float
+    schedule: WorkSchedule = field(default_factory=WorkSchedule)
 
 
 @dataclass
@@ -155,6 +211,7 @@ class Ranked:
     area: bool
     jobs_today: int
     conflict: bool
+    off_duty: bool = False
 
 
 def rank_technicians(
@@ -168,7 +225,10 @@ def rank_technicians(
     tz: ZoneInfo,
     ticket_id: str | None = None,
 ) -> list[Ranked]:
-    """BR-05: đúng kỹ năng → đúng khu vực → ít việc trong ngày → đánh giá cao; KTV trùng lịch xếp cuối (BR-04)."""
+    """BR-05: đúng kỹ năng → đúng khu vực → ít việc trong ngày → đánh giá cao.
+
+    KTV trùng lịch (BR-04) hoặc ngoài lịch làm việc (UC18) xếp cuối, kèm cờ để giao diện hiển thị lý do.
+    """
     day = appointment_at.astimezone(tz).date()
     ranked = []
     for c in candidates:
@@ -184,9 +244,10 @@ def rank_technicians(
                 area=ward in c.areas,
                 jobs_today=jobs_today,
                 conflict=has_conflict(c.tech_id, appointment_at, duration_min, bookings, config, ticket_id),
+                off_duty=off_duty(c.schedule, appointment_at, duration_min, tz),
             )
         )
-    ranked.sort(key=lambda r: (r.conflict, not r.skill, not r.area, r.jobs_today, -r.candidate.rating))
+    ranked.sort(key=lambda r: (r.conflict or r.off_duty, not r.skill, not r.area, r.jobs_today, -r.candidate.rating))
     return ranked
 
 

@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-10-30 06:10:31.742756
+Create Date: 2026-10-30 07:20:35.928010
 """
 
 from collections.abc import Sequence
@@ -123,6 +123,7 @@ def upgrade() -> None:
         sa.Column("type", sa.String(length=20), nullable=False),
         sa.Column("brand", sa.String(length=80), nullable=False),
         sa.Column("model", sa.String(length=120), nullable=False),
+        sa.Column("note", sa.String(length=255), nullable=False),
         sa.Column("removed", sa.Boolean(), nullable=False),
         sa.ForeignKeyConstraint(
             ["customer_id"],
@@ -176,6 +177,7 @@ def upgrade() -> None:
         sa.Column("rating", sa.Numeric(precision=2, scale=1), nullable=False),
         sa.Column("rating_count", sa.Integer(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False),
+        sa.Column("schedule", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.CheckConstraint("rating BETWEEN 0 AND 5", name="ck_technicians_rating"),
         sa.ForeignKeyConstraint(
             ["user_id"],

@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.domain.rules import WorkSchedule
 from app.domain.status import Status
 
 Timestamp = DateTime(timezone=True)
@@ -82,6 +83,7 @@ class Technician(Base):
     rating: Mapped[float] = mapped_column(Numeric(2, 1), default=5)
     rating_count: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    schedule: Mapped[dict] = mapped_column(JSONB, default=lambda: WorkSchedule().to_dict())
 
     user: Mapped[User] = relationship(back_populates="technician")
 
@@ -137,6 +139,7 @@ class Device(Base):
     type: Mapped[str] = mapped_column(String(20))
     brand: Mapped[str] = mapped_column(String(80))
     model: Mapped[str] = mapped_column(String(120))
+    note: Mapped[str] = mapped_column(String(255), default="")
     removed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 

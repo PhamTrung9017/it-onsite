@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, not_found
-from app.domain.rules import Candidate, has_conflict, rank_technicians, response_deadline, warranty_status
+from app.domain.rules import Candidate, WorkSchedule, has_conflict, off_duty, rank_technicians, response_deadline, warranty_status
 from app.domain.status import CLOSED_STATUSES, Status
 from app.models import Assignment, Category, Payment, Service, Technician, Ticket, User, WarrantyClaim
 from app.services.common import (
@@ -94,7 +94,9 @@ def suggest(db: Session, user: User, ticket_id: str, appointment_at: datetime) -
         )
         if "KTV" in t.user.roles
     }
-    candidates = [Candidate(t.id, list(t.skills), list(t.areas), float(t.rating)) for t in techs.values()]
+    candidates = [
+        Candidate(t.id, list(t.skills), list(t.areas), float(t.rating), WorkSchedule.from_dict(t.schedule)) for t in techs.values()
+    ]
     ranked = rank_technicians(
         candidates,
         ticket.category_code,
@@ -107,7 +109,14 @@ def suggest(db: Session, user: User, ticket_id: str, appointment_at: datetime) -
         ticket.id,
     )
     return [
-        {"tech": techs[r.candidate.tech_id], "skill": r.skill, "area": r.area, "jobsToday": r.jobs_today, "conflict": r.conflict}
+        {
+            "tech": techs[r.candidate.tech_id],
+            "skill": r.skill,
+            "area": r.area,
+            "jobsToday": r.jobs_today,
+            "conflict": r.conflict,
+            "offDuty": r.off_duty,
+        }
         for r in ranked
     ]
 
@@ -125,6 +134,8 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
     if appointment_at < now:
         raise ApiError("Giờ hẹn phải ở tương lai.")
     config = load_config(db)
+    if off_duty(WorkSchedule.from_dict(tech.schedule), appointment_at, ticket.estimated_minutes, get_settings().tz):
+        raise conflict("Giờ hẹn nằm ngoài lịch làm việc của kỹ thuật viên này.")
     if has_conflict(tech.id, appointment_at, ticket.estimated_minutes, bookings(db), config, ticket.id):
         raise conflict("Kỹ thuật viên bị trùng lịch ở khung giờ này (BR-04).")
     ticket.assignments.append(

@@ -42,6 +42,7 @@ def suggestions(
             "area": row["area"],
             "jobsToday": row["jobsToday"],
             "conflict": row["conflict"],
+            "offDuty": row["offDuty"],
         }
         for row in dispatch.suggest(db, user, ticket_id, appointment_at)
     ]

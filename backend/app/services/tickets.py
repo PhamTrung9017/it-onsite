@@ -12,8 +12,10 @@ from app.domain.classifier import URGENCY_LEVELS
 from app.domain.rules import (
     Booking,
     BusinessConfig,
+    WorkSchedule,
     cancellation_policy,
     has_conflict,
+    off_duty,
     review_policy,
     validate_review,
     validate_slot,
@@ -270,7 +272,9 @@ def reschedule_ticket(db: Session, user: User, ticket_id: str, slot_start: datet
         raise ApiError(error)
     assignment = ticket.assignment
     if assignment and ticket.status in (Status.DA_PHAN_CONG, Status.KTV_DA_NHAN):
-        db.get(Technician, assignment.tech_id, with_for_update=True)
+        tech = db.get(Technician, assignment.tech_id, with_for_update=True)
+        if off_duty(WorkSchedule.from_dict(tech.schedule), slot_start, ticket.estimated_minutes, get_settings().tz):
+            raise conflict("Kỹ thuật viên phụ trách không làm việc vào giờ này. Vui lòng chọn khung giờ khác.")
         if has_conflict(assignment.tech_id, slot_start, ticket.estimated_minutes, bookings(db), config, ticket.id):
             raise conflict("Kỹ thuật viên phụ trách đã có lịch ở khung giờ này. Vui lòng chọn khung giờ khác.")
         assignment.appointment_at = slot_start
