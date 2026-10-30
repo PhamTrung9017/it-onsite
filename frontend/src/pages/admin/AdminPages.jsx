@@ -53,7 +53,7 @@ export function TechniciansPage() {
                 <td className="small" style={{ maxWidth: 260 }}>{t.skills.map(catName).join(', ')}</td>
                 <td className="small" style={{ maxWidth: 220 }}>{t.areas.join(', ')}</td>
                 <td><span className="row-sm small"><Stars value={t.rating} size={13} />{t.rating}</span></td>
-                <td className="right">{t.active_jobs} / {t.done}</td>
+                <td className="right">{t.activeJobs} / {t.done}</td>
                 <td><Toggle on={t.active} label={`Hoạt động: ${t.name}`} onChange={(v) => save({ ...t, active: v })} /></td>
                 <td className="right"><Button variant="ghost" size="sm" icon={Pencil} onClick={() => setEdit({ ...t })}>Sửa</Button></td>
               </tr>

@@ -7,17 +7,13 @@ import {
 } from '../../lib/rules.js';
 import { classifyIssue, redactPersonalData } from '../../lib/classifier.js';
 import { buildVietQR } from '../../lib/vietqr.js';
+import { ApiError } from '../apiError.js';
 
 const KEY = 'itonsite.mock.v1';
 const SESSION_KEY = 'itonsite.session.v1';
 const DAY = 86400000;
 
-export class ApiError extends Error {
-  constructor(message, status = 400) {
-    super(message);
-    this.status = status;
-  }
-}
+export { ApiError };
 
 /* ---------- Lưu trữ ---------- */
 
@@ -277,6 +273,10 @@ export const mockApi = {
     // Luôn trả cùng một thông báo để không lộ email nào đã đăng ký
     return { ok: true };
   }, 400),
+
+  resetPassword: ({ token }) => respond((db) => {
+    if (!db.resetTokens.some((r) => r.token && r.token === token)) throw new ApiError('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
+  }, 300),
 
   changePassword: ({ current, next }) => respond((db) => {
     const user = currentUser(db);
@@ -856,7 +856,7 @@ export const mockApi = {
       technicians: db.technicians.map((t) => {
         const u = db.users.find((x) => x.id === t.userId);
         const jobs = db.tickets.filter((x) => x.assignment?.techId === t.id);
-        return { ...t, name: u?.name, email: u?.email, phone: u?.phone, done: jobs.filter((x) => x.status === STATUS.HOAN_TAT).length, active_jobs: jobs.filter((x) => BUSY_STATUSES.includes(x.status)).length };
+        return { ...t, name: u?.name, email: u?.email, phone: u?.phone, done: jobs.filter((x) => x.status === STATUS.HOAN_TAT).length, activeJobs: jobs.filter((x) => BUSY_STATUSES.includes(x.status)).length };
       }),
       services: db.services,
       parts: db.parts,

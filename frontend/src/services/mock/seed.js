@@ -67,7 +67,9 @@ const USERS = [
   { id: 'u-ktv4', name: 'Đỗ Thu Hà', email: 'ha.do@demo.vn', phone: '0909000014', roles: ['KTV'] },
   { id: 'u-dpv1', name: 'Trần Thị Lan', email: 'dpv@demo.vn', phone: '0909000021', roles: ['DPV'] },
   { id: 'u-qtv1', name: 'Hoàng Minh Quân', email: 'qtv@demo.vn', phone: '0909000031', roles: ['QTV', 'DPV'] },
-].map((u) => ({ ...u, password: '123456', locked: false, createdAt: '2026-09-01T02:00:00.000Z', consentAt: '2026-09-01T02:00:00.000Z' }));
+];
+
+const withAccount = (u) => ({ ...u, password: '123456', locked: false, createdAt: '2026-09-01T02:00:00.000Z', consentAt: '2026-09-01T02:00:00.000Z' });
 
 const TECHNICIANS = [
   { id: 'k1', userId: 'u-ktv1', skills: ['CAI_HDH', 'PHAN_MEM', 'VIRUS', 'MAY_CHAM', 'PHAN_CUNG'], areas: ['Bến Thành', 'Sài Gòn', 'Tân Định', 'Cầu Ông Lãnh', 'Chợ Quán'], rating: 4.9, ratingCount: 0, active: true },
@@ -365,7 +367,7 @@ export function buildSeed(nowDate = new Date()) {
   return {
     version: 1,
     config: structuredClone(DEFAULT_CONFIG),
-    users: structuredClone(USERS),
+    users: USERS.map(withAccount),
     technicians,
     categories: structuredClone(CATEGORIES),
     services: structuredClone(SERVICES),
