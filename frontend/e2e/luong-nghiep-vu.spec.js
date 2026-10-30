@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { expectStatus, getTicket, loginAs, readDb, resetData, techEmail, tomorrowInput, trackErrors } from './helpers.js';
+import {
+  BACKEND, claimStatus, expectStatus, getTicket, loginAs, myTickets, readMock, resetData, surveyFee, technician, tomorrowInput, trackErrors,
+  warrantiesOf, warrantyTicketOf,
+} from './helpers.js';
 
 const PHOTO_BEFORE = new URL('./fixtures/anh-truoc.jpg', import.meta.url).pathname;
 const PHOTO_AFTER = new URL('./fixtures/anh-sau.jpg', import.meta.url).pathname;
@@ -47,12 +50,11 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
       await best.getByRole('button', { name: 'Phân công' }).click();
       const t = await expectStatus(page, id, 'DA_PHAN_CONG');
       techId = t.assignment.techId;
-      const db = await readDb(page);
-      expect(db.technicians.find((k) => k.id === techId).skills, 'BR-05: ưu tiên đúng kỹ năng').toContain('NGUON');
+      expect((await technician(page, techId)).skills, 'BR-05: ưu tiên đúng kỹ năng').toContain('NGUON');
     });
 
     await test.step('UC09, UC12, UC10: kỹ thuật viên nhận việc, check-in, chụp ảnh và lập báo giá', async () => {
-      await loginAs(page, await techEmail(page, techId));
+      await loginAs(page, (await technician(page, techId)).email);
       await page.goto(`/ktv/viec/${id}`);
       await page.getByRole('button', { name: 'Nhận việc' }).click();
       await expectStatus(page, id, 'KTV_DA_NHAN');
@@ -79,7 +81,7 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
     });
 
     await test.step('UC12: kỹ thuật viên chỉ báo hoàn thành được khi có ảnh trước và sau (BR-11)', async () => {
-      await loginAs(page, await techEmail(page, techId));
+      await loginAs(page, (await technician(page, techId)).email);
       await page.goto(`/ktv/viec/${id}`);
       await expect(page.getByRole('button', { name: 'Báo hoàn thành' })).toBeDisabled();
       await page.locator('input[type=file]').nth(1).setInputFiles(PHOTO_AFTER);
@@ -106,8 +108,7 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
       await page.goto('/dieu-phoi/thanh-toan');
       await page.locator('tr', { hasText: id }).getByRole('button', { name: 'Xác nhận đã nhận' }).click();
       await expectStatus(page, id, 'HOAN_TAT');
-      const db = await readDb(page);
-      expect(db.warranties.filter((w) => w.ticketId === id).length).toBeGreaterThan(0);
+      expect((await warrantiesOf(page, id, 'khach@demo.vn')).length).toBeGreaterThan(0);
     });
 
     await test.step('UC16, UC15: khách đánh giá và gửi yêu cầu bảo hành, điều phối viên chấp nhận (BR-07)', async () => {
@@ -123,35 +124,32 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
       await item.getByRole('button', { name: 'Yêu cầu bảo hành' }).click();
       await page.fill('#wd', 'Máy lại không lên nguồn sau 3 ngày.');
       await page.getByRole('dialog').getByRole('button', { name: 'Gửi yêu cầu' }).click();
-      await expect.poll(async () => (await readDb(page)).warrantyClaims.at(-1)?.status).toBe('CHO_XU_LY');
+      await expect.poll(() => claimStatus(page, id)).toBe('CHO_XU_LY');
 
       await loginAs(page, 'dpv@demo.vn');
       await page.goto('/dieu-phoi/bao-hanh');
       await page.locator('.list-item', { hasText: id }).getByRole('button', { name: 'Chấp nhận, tạo phiếu' }).click();
-      await expect.poll(async () => (await readDb(page)).warrantyClaims.at(-1).status).toBe('HOP_LE');
-      const db = await readDb(page);
-      const warrantyTicket = db.tickets.find((t) => t.isWarranty && t.warrantyOf === id);
-      expect(warrantyTicket.status).toBe('MOI');
+      await expect.poll(() => claimStatus(page, id)).toBe('HOP_LE');
+      expect((await warrantyTicketOf(page, id)).status).toBe('MOI');
     });
   });
 
   test('UC11 nhánh từ chối: khách chỉ trả phí khảo sát, kỹ thuật viên thu tiền mặt, điều phối viên đối soát (BR-02, BR-08)', async ({ page }) => {
     await loginAs(page, 'khach@demo.vn');
-    const db = await readDb(page);
-    const ticket = db.tickets.find((t) => t.status === 'CHO_DUYET_BAO_GIA' && t.customerId === 'u-kh1');
+    const ticket = (await myTickets(page)).find((t) => t.status === 'CHO_DUYET_BAO_GIA');
     await page.goto(`/khach/phieu/${ticket.id}/bao-gia`);
     await page.getByRole('button', { name: /Từ chối báo giá/ }).click();
     await page.fill('#rr', 'Chi phí cao hơn dự kiến.');
     await page.getByRole('button', { name: 'Xác nhận từ chối' }).click();
     const t = await expectStatus(page, ticket.id, 'CHO_THANH_TOAN');
-    expect(t.payment.amount).toBe(db.config.surveyFee);
+    expect(t.payment.amount).toBe(await surveyFee(page));
 
     await page.goto(`/khach/phieu/${ticket.id}/thanh-toan`);
     await page.getByRole('button', { name: 'Tiền mặt' }).click();
     await page.getByRole('button', { name: 'Trả tiền mặt cho kỹ thuật viên' }).click();
     await page.waitForURL(new RegExp(`/khach/phieu/${ticket.id}$`));
 
-    await loginAs(page, await techEmail(page, t.assignment.techId));
+    await loginAs(page, (await technician(page, t.assignment.techId)).email);
     await page.goto(`/ktv/viec/${ticket.id}`);
     await page.getByRole('button', { name: 'Xác nhận đã thu tiền mặt' }).click();
     await page.getByRole('dialog').getByRole('button', { name: /^Đã thu/ }).click();
@@ -164,8 +162,9 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
   });
 
   test('BR-06: kỹ thuật viên quá hạn phản hồi thì phân công tự thu hồi', async ({ page }) => {
+    test.skip(BACKEND, 'Trên backend thật, quy tắc này được kiểm thử bằng pytest (tests/test_flow.py)');
     await loginAs(page, 'dpv@demo.vn');
-    const db = await readDb(page);
+    const db = await readMock(page);
     const pending = db.tickets.find((t) => t.status === 'DA_PHAN_CONG' && !t.assignment.result);
     pending.assignment.deadline = new Date(Date.now() - 60_000).toISOString();
     await page.evaluate((data) => localStorage.setItem('itonsite.mock.v1', JSON.stringify(data)), db);
@@ -176,8 +175,7 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
 
   test('UC07: khách hủy miễn phí khi phiếu chưa có kỹ thuật viên đến (BR-03)', async ({ page }) => {
     await loginAs(page, 'khach@demo.vn');
-    const db = await readDb(page);
-    const ticket = db.tickets.find((t) => t.status === 'MOI' && t.customerId === 'u-kh1');
+    const ticket = (await myTickets(page)).find((t) => t.status === 'MOI');
     await page.goto(`/khach/phieu/${ticket.id}`);
     await page.getByRole('button', { name: 'Hủy yêu cầu' }).click();
     await page.fill('#rs', 'Đã tự khắc phục được.');
