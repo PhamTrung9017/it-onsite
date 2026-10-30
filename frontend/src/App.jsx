@@ -9,6 +9,7 @@ import CreateRequestPage from './pages/customer/CreateRequestPage.jsx';
 import TicketDetailPage from './pages/customer/TicketDetailPage.jsx';
 import QuoteReviewPage from './pages/customer/QuoteReviewPage.jsx';
 import PaymentPage from './pages/customer/PaymentPage.jsx';
+import ReceiptPage from './pages/customer/ReceiptPage.jsx';
 import WarrantyPage from './pages/customer/WarrantyPage.jsx';
 import ProfilePage from './pages/customer/ProfilePage.jsx';
 import JobsPage from './pages/technician/JobsPage.jsx';
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="phieu/:id" element={<TicketDetailPage />} />
           <Route path="phieu/:id/bao-gia" element={<QuoteReviewPage />} />
           <Route path="phieu/:id/thanh-toan" element={<PaymentPage />} />
+          <Route path="phieu/:id/bien-nhan" element={<ReceiptPage />} />
           <Route path="tao-yeu-cau" element={<CreateRequestPage />} />
           <Route path="bao-hanh" element={<WarrantyPage />} />
           <Route path="ho-so" element={<ProfilePage />} />

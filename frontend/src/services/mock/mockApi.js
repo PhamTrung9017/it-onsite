@@ -2,8 +2,8 @@
 import { AREAS, buildSeed } from './seed.js';
 import { canTransition, STATUS, STATUS_LABEL, BUSY_STATUSES, isClosed } from '../../lib/ticketStatus.js';
 import {
-  amountDue, canComplete, cancellationPolicy, hasConflict, rankTechnicians, responseDeadline,
-  reviewPolicy, validateReview, validateSlot, warrantyStatus,
+  DEFAULT_SCHEDULE, amountDue, canComplete, cancellationPolicy, hasConflict, offDuty, rankTechnicians, responseDeadline,
+  reviewPolicy, validateReview, validateSchedule, validateSlot, warrantyStatus,
 } from '../../lib/rules.js';
 import { classifyIssue, redactPersonalData } from '../../lib/classifier.js';
 import { buildVietQR } from '../../lib/vietqr.js';
@@ -328,10 +328,11 @@ export const mockApi = {
     }));
   }, 150),
 
-  addDevice: ({ type, brand, model }) => respond((db) => {
+  addDevice: ({ type, brand, model, note = '' }) => respond((db) => {
     const user = requireRole(db, 'KHACH');
     if (!brand.trim() || !model.trim()) throw new ApiError('Vui lòng nhập hãng và dòng máy.');
-    const d = { id: `tb-${Date.now()}`, customerId: user.id, type, brand: brand.trim(), model: model.trim() };
+    if (note.length > 255) throw new ApiError('Ghi chú thiết bị tối đa 255 ký tự.');
+    const d = { id: `tb-${Date.now()}`, customerId: user.id, type, brand: brand.trim(), model: model.trim(), note: note.trim() };
     db.devices.push(d);
     return d;
   }),
@@ -448,6 +449,10 @@ export const mockApi = {
     if (err) throw new ApiError(err);
     if (t.assignment && [STATUS.DA_PHAN_CONG, STATUS.KTV_DA_NHAN].includes(t.status)) {
       // Giữ KTV đã phân công nếu KTV rảnh ở khung giờ mới (BR-04); nếu không, khách chọn giờ khác hoặc liên hệ điều phối
+      const tech = db.technicians.find((x) => x.id === t.assignment.techId);
+      if (offDuty(tech?.schedule, slotStart, t.estimatedMinutes)) {
+        throw new ApiError('Kỹ thuật viên phụ trách không làm việc vào giờ này. Vui lòng chọn khung giờ khác.', 409);
+      }
       if (hasConflict(t.assignment.techId, slotStart, t.estimatedMinutes, db.tickets, db.config, t.id)) {
         throw new ApiError('Kỹ thuật viên phụ trách đã có lịch ở khung giờ này. Vui lòng chọn khung giờ khác.', 409);
       }
@@ -799,6 +804,7 @@ export const mockApi = {
     if (!tech) throw new ApiError('Kỹ thuật viên không khả dụng.');
     const at = new Date(appointmentAt).getTime();
     if (Number.isNaN(at) || at < Date.now()) throw new ApiError('Giờ hẹn phải ở tương lai.');
+    if (offDuty(tech.schedule, appointmentAt, t.estimatedMinutes)) throw new ApiError('Giờ hẹn nằm ngoài lịch làm việc của kỹ thuật viên này.', 409);
     if (hasConflict(tech.id, appointmentAt, t.estimatedMinutes, db.tickets, db.config, t.id)) throw new ApiError('Kỹ thuật viên bị trùng lịch ở khung giờ này (BR-04).', 409);
     const assignedAt = nowIso();
     t.assignment = { techId, appointmentAt, assignedAt, deadline: responseDeadline(assignedAt, db.config), result: null, respondedAt: null };
@@ -919,9 +925,12 @@ export const mockApi = {
     const user = requireRole(db, 'QTV');
     if (!data.skills?.length) throw new ApiError('Kỹ thuật viên cần ít nhất một kỹ năng.');
     if (!data.areas?.length) throw new ApiError('Kỹ thuật viên cần ít nhất một khu vực phụ trách.');
+    const schedule = data.schedule ? { ...data.schedule, workDays: [...new Set(data.schedule.workDays)].sort((a, b) => a - b), daysOff: [...new Set(data.schedule.daysOff || [])].sort() } : null;
+    const scheduleError = schedule && validateSchedule(schedule);
+    if (scheduleError) throw new ApiError(scheduleError);
     if (data.id) {
       const t = db.technicians.find((x) => x.id === data.id);
-      Object.assign(t, { skills: data.skills, areas: data.areas, active: data.active });
+      Object.assign(t, { skills: data.skills, areas: data.areas, active: data.active }, schedule && { schedule });
       const u = db.users.find((x) => x.id === t.userId);
       if (data.phone) u.phone = data.phone;
       if (data.name) u.name = data.name;
@@ -930,7 +939,7 @@ export const mockApi = {
       if (db.users.some((u) => u.email.toLowerCase() === data.email.toLowerCase())) throw new ApiError('Email đã tồn tại.', 409);
       const u = { id: `u-${Date.now()}`, name: data.name.trim(), email: data.email, phone: data.phone || '', password: 'doimatkhau123', roles: ['KTV'], locked: false, createdAt: nowIso(), consentAt: nowIso() };
       db.users.push(u);
-      db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: data.skills, areas: data.areas, rating: 5, ratingCount: 0, active: true });
+      db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: data.skills, areas: data.areas, rating: 5, ratingCount: 0, active: true, schedule: schedule || { ...DEFAULT_SCHEDULE } });
     }
     audit(db, user, data.id ? 'SUA_KTV' : 'THEM_KTV', data.name);
   }),
@@ -942,7 +951,7 @@ export const mockApi = {
     if (u.id === admin.id && (!roles.includes('QTV') || locked)) throw new ApiError('Không thể tự gỡ quyền quản trị hoặc tự khóa tài khoản của mình.', 409);
     if (!roles.length) throw new ApiError('Tài khoản cần ít nhất một vai trò.');
     if (roles.includes('KTV') && !db.technicians.some((t) => t.userId === u.id)) {
-      db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: ['KHAC'], areas: [db.config.areas[0]], rating: 5, ratingCount: 0, active: true });
+      db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: ['KHAC'], areas: [db.config.areas[0]], rating: 5, ratingCount: 0, active: true, schedule: { ...DEFAULT_SCHEDULE } });
     }
     u.roles = roles;
     u.locked = Boolean(locked);
@@ -956,7 +965,7 @@ export const mockApi = {
     if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) throw new ApiError('Email đã tồn tại.', 409);
     const u = { id: `u-${Date.now()}`, name: name.trim(), email, phone: phone || '', password: 'doimatkhau123', roles, locked: false, createdAt: nowIso(), consentAt: nowIso() };
     db.users.push(u);
-    if (roles.includes('KTV')) db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: ['KHAC'], areas: [db.config.areas[0]], rating: 5, ratingCount: 0, active: true });
+    if (roles.includes('KTV')) db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: ['KHAC'], areas: [db.config.areas[0]], rating: 5, ratingCount: 0, active: true, schedule: { ...DEFAULT_SCHEDULE } });
     audit(db, admin, 'TAO_TAI_KHOAN', email, roles.join(', '));
     return publicUser(u);
   }),

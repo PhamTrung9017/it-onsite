@@ -56,13 +56,13 @@ export default function ProfilePage() {
               </div>
             </div>
           </Card>
-          <Card title="Thiết bị của tôi" action={<Button variant="outline" size="sm" icon={Plus} onClick={() => setDev({ type: 'Laptop', brand: '', model: '' })}>Thêm thiết bị</Button>} bodyClass="list">
+          <Card title="Thiết bị của tôi" action={<Button variant="outline" size="sm" icon={Plus} onClick={() => setDev({ type: 'Laptop', brand: '', model: '', note: '' })}>Thêm thiết bị</Button>} bodyClass="list">
             {data.devices.length === 0 ? <Empty icon={Laptop} title="Chưa có thiết bị">Thêm thiết bị để theo dõi lịch sử sửa chữa và bảo hành.</Empty> : data.devices.map((d) => {
               const I = ICON[d.type] || Laptop;
               return (
                 <div key={d.id} className="list-item">
                   <div className="list-icon"><I aria-hidden /></div>
-                  <div className="grow"><div className="strong">{d.brand} {d.model}</div><div className="tiny muted">{d.type} · {d.repairCount} lần sửa chữa · {d.activeWarranties} bảo hành còn hiệu lực</div></div>
+                  <div className="grow"><div className="strong">{d.brand} {d.model}</div><div className="tiny muted">{d.type} · {d.repairCount} lần sửa chữa · {d.activeWarranties} bảo hành còn hiệu lực</div>{d.note && <div className="tiny muted">{d.note}</div>}</div>
                   <button type="button" className="icon-btn" aria-label={`Xóa ${d.model}`} onClick={async () => { if (await run(`rm-${d.id}`, () => api.removeDevice(d.id), 'Đã xóa thiết bị.')) reload(true); }}><Trash2 size={18} /></button>
                 </div>
               );
@@ -93,6 +93,7 @@ export default function ProfilePage() {
               <Field label="Hãng" htmlFor="db"><input id="db" className="input" value={dev.brand} onChange={(e) => setDev({ ...dev, brand: e.target.value })} /></Field>
               <Field label="Dòng máy" htmlFor="dm"><input id="dm" className="input" value={dev.model} onChange={(e) => setDev({ ...dev, model: e.target.value })} /></Field>
             </div>
+            <Field label="Ghi chú (không bắt buộc)" htmlFor="dn"><input id="dn" className="input" maxLength={255} placeholder="Ví dụ: máy đặt ở phòng kế toán, tầng 2" value={dev.note} onChange={(e) => setDev({ ...dev, note: e.target.value })} /></Field>
           </>
         )}
       </Modal>

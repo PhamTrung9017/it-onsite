@@ -130,7 +130,7 @@ export default function BoardPage() {
                   <p>{sel.description}</p>
                   <dl className="kv">
                     <dt>Khách hàng</dt><dd>{sel.customer?.name} · {sel.customer?.phone}</dd>
-                    <dt>Thiết bị</dt><dd>{sel.device?.type} · {sel.device?.brand} {sel.device?.model}</dd>
+                    <dt>Thiết bị</dt><dd>{sel.device?.type} · {sel.device?.brand} {sel.device?.model}{sel.device?.note && <div className="tiny muted">{sel.device.note}</div>}</dd>
                     <dt>Địa chỉ</dt><dd className="row-sm"><MapPin size={14} aria-hidden />{sel.address}, phường {sel.ward}</dd>
                     <dt>Khách muốn</dt><dd>{formatDateTime(sel.slotStart)}</dd>
                     <dt>Tạo lúc</dt><dd>{formatDateTime(sel.createdAt)} ({timeAgo(sel.createdAt)})</dd>
@@ -165,22 +165,27 @@ export default function BoardPage() {
                     <span className="section-title">Kỹ thuật viên gợi ý · đúng kỹ năng → đúng khu vực → ít việc → đánh giá cao</span>
                     {!suggest ? <div className="skeleton" style={{ height: 120 }} /> : suggest.length === 0 ? <p className="small muted">Không có kỹ thuật viên đang hoạt động.</p> : (
                       <div className="stack-sm">
-                        {suggest.map((s, i) => (
-                          <div key={s.tech.id} className="row" style={{ padding: '12px 14px', border: `1px solid ${i === 0 && !s.conflict ? 'var(--brand-200)' : 'var(--line)'}`, borderRadius: 12, opacity: s.conflict ? 0.6 : 1, background: i === 0 && !s.conflict ? 'var(--brand-50)' : 'var(--surface)' }}>
-                            <div className="grow">
-                              <div className="row-sm wrap"><span className="strong">{s.tech.name}</span>{i === 0 && !s.conflict && <Badge tone="success" plain>Phù hợp nhất</Badge>}</div>
-                              <div className="row-sm wrap tiny" style={{ marginTop: 4 }}>
-                                <Badge tone={s.skill ? 'success' : 'muted'} plain>{s.skill ? 'Đúng kỹ năng' : 'Khác kỹ năng'}</Badge>
-                                <Badge tone={s.area ? 'success' : 'muted'} plain>{s.area ? 'Đúng khu vực' : 'Ngoài khu vực'}</Badge>
-                                <Badge tone="muted" plain>{s.jobsToday} việc trong ngày</Badge>
-                                <Badge tone="muted" plain><Star size={12} aria-hidden />{s.tech.rating}</Badge>
-                                {s.conflict && <Badge tone="danger" plain>Trùng lịch</Badge>}
+                        {suggest.map((s, i) => {
+                          const blocked = s.conflict || s.offDuty;
+                          const best = i === 0 && !blocked;
+                          return (
+                            <div key={s.tech.id} className="row" style={{ padding: '12px 14px', border: `1px solid ${best ? 'var(--brand-200)' : 'var(--line)'}`, borderRadius: 12, opacity: blocked ? 0.6 : 1, background: best ? 'var(--brand-50)' : 'var(--surface)' }}>
+                              <div className="grow">
+                                <div className="row-sm wrap"><span className="strong">{s.tech.name}</span>{best && <Badge tone="success" plain>Phù hợp nhất</Badge>}</div>
+                                <div className="row-sm wrap tiny" style={{ marginTop: 4 }}>
+                                  <Badge tone={s.skill ? 'success' : 'muted'} plain>{s.skill ? 'Đúng kỹ năng' : 'Khác kỹ năng'}</Badge>
+                                  <Badge tone={s.area ? 'success' : 'muted'} plain>{s.area ? 'Đúng khu vực' : 'Ngoài khu vực'}</Badge>
+                                  <Badge tone="muted" plain>{s.jobsToday} việc trong ngày</Badge>
+                                  <Badge tone="muted" plain><Star size={12} aria-hidden />{s.tech.rating}</Badge>
+                                  {s.offDuty && <Badge tone="warning" plain>Ngoài lịch làm việc</Badge>}
+                                  {s.conflict && <Badge tone="danger" plain>Trùng lịch</Badge>}
+                                </div>
                               </div>
+                              <Button size="sm" disabled={blocked} loading={busy === `as-${s.tech.id}`}
+                                onClick={() => act(`as-${s.tech.id}`, () => api.assignTechnician(sel.id, { techId: s.tech.id, appointmentAt, version: sel.version }), `Đã phân công ${s.tech.name}.`)}>Phân công</Button>
                             </div>
-                            <Button size="sm" disabled={s.conflict} loading={busy === `as-${s.tech.id}`}
-                              onClick={() => act(`as-${s.tech.id}`, () => api.assignTechnician(sel.id, { techId: s.tech.id, appointmentAt, version: sel.version }), `Đã phân công ${s.tech.name}.`)}>Phân công</Button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                     <div><Button variant="danger" size="sm" icon={XCircle} onClick={() => setCancelOpen(true)}>Hủy phiếu</Button></div>

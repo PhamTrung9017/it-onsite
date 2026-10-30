@@ -27,6 +27,33 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await expect.poll(async () => hourInVietnam((await getTicket(page, ticket.id)).slotStart)).toBe('16');
   });
 
+  test('UC18: ngày nghỉ của kỹ thuật viên chặn phân công vào ngày đó', async ({ page }) => {
+    const tomorrow = await tomorrowInput(page);
+    await loginAs(page, 'qtv@demo.vn');
+    await page.goto('/quan-tri/ky-thuat-vien');
+    await page.getByRole('row', { name: /Lê Hoàng Phúc/ }).getByRole('button', { name: 'Sửa' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'CN', exact: true }).click();
+    await page.fill('#wo', tomorrow);
+    await dialog.getByRole('button', { name: 'Thêm' }).click();
+    await expect(dialog.getByRole('button', { name: /^Bỏ ngày nghỉ/ })).toHaveCount(1);
+    await dialog.getByRole('button', { name: 'Lưu' }).click();
+    await expect(page.getByRole('row', { name: /Lê Hoàng Phúc/ }).getByRole('cell', { name: 'T2–T7, 08:00–20:00' })).toBeVisible();
+
+    await loginAs(page, 'dpv@demo.vn');
+    await page.goto('/dieu-phoi');
+    await page.locator('section[aria-label="Chờ phân công"] button.ticket-card').first().click();
+    await page.fill('#ad', tomorrow);
+    await page.selectOption('#at', '10:00');
+    const row = page.locator('.stack-sm > .row', { hasText: 'Lê Hoàng Phúc' });
+    await expect(row.getByText('Ngoài lịch làm việc')).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Phân công' })).toBeDisabled();
+
+    await loginAs(page, 'phuc.le@demo.vn');
+    await page.goto('/ktv/ho-so');
+    await expect(page.getByText(/Ngày nghỉ sắp tới:/)).toBeVisible();
+  });
+
   test('UC13, UC10: nghiệm thu chưa đạt, báo giá bổ sung, làm lại rồi thu tiền mặt', async ({ page }) => {
     await loginAs(page, 'chau.le@demo.vn');
     const ticket = (await myTickets(page)).find((t) => t.status === 'DANG_THUC_HIEN');
@@ -82,6 +109,15 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await page.getByRole('dialog').getByRole('button', { name: /^Đã thu/ }).click();
     await expectStatus(page, ticket.id, 'HOAN_TAT');
     await expect(page.getByText('Phiếu đã hoàn tất')).toBeVisible();
+
+    await loginAs(page, 'chau.le@demo.vn');
+    await page.goto(`/khach/phieu/${ticket.id}`);
+    await page.getByRole('link', { name: 'Xem biên nhận' }).click();
+    const receipt = page.getByRole('article', { name: `Biên nhận phiếu ${ticket.id}` });
+    await expect(receipt.getByText('Báo giá bổ sung').first()).toBeVisible();
+    await expect(receipt.getByText('Đã thu tiền mặt · Tiền mặt')).toBeVisible();
+    const total = `${approved.toLocaleString('vi-VN')}đ`;
+    await expect(receipt.locator('tfoot')).toContainText(total);
   });
 
   test('UC11 luồng 1a: khách đọc mã xác nhận cho kỹ thuật viên', async ({ page }) => {
@@ -153,8 +189,10 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await page.getByRole('button', { name: 'Thêm thiết bị' }).click();
     await page.fill('#db', 'Acer');
     await page.fill('#dm', 'Aspire 7');
+    await page.fill('#dn', 'Máy đặt ở phòng họp');
     await page.getByRole('dialog').getByRole('button', { name: 'Thêm' }).click();
     await expect(page.getByText('Acer Aspire 7')).toBeVisible();
+    await expect(page.getByText('Máy đặt ở phòng họp')).toBeVisible();
     await page.getByRole('button', { name: 'Xóa Aspire 7' }).click();
     await expect(page.getByText('Acer Aspire 7')).toHaveCount(0);
 

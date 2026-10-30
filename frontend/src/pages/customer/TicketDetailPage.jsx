@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, CreditCard, FileText, Phone, ThumbsDown, XCircle } from 'lucide-react';
+import { CalendarClock, CheckCircle2, CreditCard, FileText, Phone, Receipt, ThumbsDown, XCircle } from 'lucide-react';
 import { useAction, useLoad } from '../../hooks/useApi.js';
 import { useNotifications } from '../../context/AppContext.jsx';
 import { api } from '../../services/api.js';
@@ -83,6 +83,17 @@ export default function TicketDetailPage() {
               </div>
             </Card>
           )}
+          {t.status === STATUS.HOAN_TAT && t.payment && (
+            <Card title="Biên nhận dịch vụ">
+              <div className="row-between wrap">
+                <div>
+                  <div className="small muted">Đã thanh toán</div>
+                  <div style={{ fontSize: 22, fontWeight: 800 }} className="price">{money(t.payment.amount)}</div>
+                </div>
+                <ButtonLink to={`/khach/phieu/${t.id}/bien-nhan`} variant="outline" icon={Receipt}>Xem biên nhận</ButtonLink>
+              </div>
+            </Card>
+          )}
           {t.status === STATUS.HOAN_TAT && (
             <Card title="Đánh giá dịch vụ">
               {t.review ? (
@@ -130,7 +141,7 @@ export default function TicketDetailPage() {
               <p>{t.description}</p>
               {t.photos.length > 0 && <PhotoGallery photos={t.photos} />}
               <dl className="kv">
-                <dt>Thiết bị</dt><dd>{t.device?.type} · {t.device?.brand} {t.device?.model}</dd>
+                <dt>Thiết bị</dt><dd>{t.device?.type} · {t.device?.brand} {t.device?.model}{t.device?.note && <div className="tiny muted">{t.device.note}</div>}</dd>
                 <dt>Địa chỉ</dt><dd><AddressLine ticket={t} /></dd>
                 <dt>Giờ hẹn</dt><dd>{formatDateTime(appointment)}</dd>
                 <dt>Tạo lúc</dt><dd>{formatDateTime(t.createdAt)}</dd>
