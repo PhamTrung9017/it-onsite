@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { buildVietQR, crc16, sanitizeContent } from './vietqr.js';
 import { canTransition, STATUS } from './ticketStatus.js';
 import {
-  amountDue, canComplete, cancellationPolicy, hasConflict, rankTechnicians, reviewPolicy, validateReview, validateSlot, warrantyStatus,
+  amountDue, canComplete, cancellationPolicy, hasConflict, offDuty, rankTechnicians, reviewPolicy, validateReview, validateSchedule,
+  validateSlot, warrantyStatus,
 } from './rules.js';
+import { formatSchedule } from './format.js';
 import { classifyIssue, redactPersonalData } from './classifier.js';
 
 const config = {
@@ -82,6 +84,34 @@ describe('BR-04 và BR-05 điều phối', () => {
     const ranked = rankTechnicians({ ticket, technicians, tickets: busy, config, appointmentAt: base });
     expect(ranked.map((r) => r.tech.id)).toEqual(['k2', 'k3', 'k1']);
     expect(ranked[2].conflict).toBe(true);
+  });
+});
+
+describe('UC18 lịch làm việc của KTV', () => {
+  const schedule = { workDays: [1, 2, 3, 4, 5], start: '08:00', end: '17:00', daysOff: ['2026-11-02'] };
+  const at = (day, h, m = 0) => new Date(2026, 10, day, h, m).toISOString();
+  it('nhận ra lịch hẹn ngoài ngày, giờ làm và ngày nghỉ', () => {
+    expect(offDuty(schedule, at(3, 9), 60)).toBe(false);
+    expect(offDuty(schedule, at(3, 16, 30), 60)).toBe(true);
+    expect(offDuty(schedule, at(3, 7, 30), 60)).toBe(true);
+    expect(offDuty(schedule, at(1, 9), 60)).toBe(true);
+    expect(offDuty(schedule, at(2, 9), 60)).toBe(true);
+  });
+  it('KTV ngoài lịch làm việc xếp cuối dù đúng kỹ năng và khu vực', () => {
+    const technicians = [
+      { id: 'k1', active: true, skills: ['VIRUS'], areas: ['Bến Thành'], rating: 5, schedule },
+      { id: 'k2', active: true, skills: ['MANG'], areas: ['Gia Định'], rating: 4 },
+    ];
+    const ticket = { id: 'T', categoryCode: 'VIRUS', ward: 'Bến Thành', estimatedMinutes: 60 };
+    const ranked = rankTechnicians({ ticket, technicians, tickets: [], config, appointmentAt: at(2, 9) });
+    expect(ranked.map((r) => [r.tech.id, r.offDuty])).toEqual([['k2', false], ['k1', true]]);
+  });
+  it('kiểm tra dữ liệu lịch và hiển thị gọn', () => {
+    expect(validateSchedule({ ...schedule, workDays: [] })).toMatch(/ít nhất một ngày/);
+    expect(validateSchedule({ ...schedule, start: '18:00' })).toMatch(/trước giờ kết thúc/);
+    expect(validateSchedule(schedule)).toBeNull();
+    expect(formatSchedule(schedule)).toBe('T2–T6, 08:00–17:00');
+    expect(formatSchedule({ ...schedule, workDays: [1, 3, 5] })).toBe('T2, T4, T6, 08:00–17:00');
   });
 });
 

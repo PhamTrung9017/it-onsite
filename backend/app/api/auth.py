@@ -53,9 +53,9 @@ def reset_password(body: ResetPasswordBody, db: Db) -> dict:
 
 @router.post("/change-password")
 def change_password(body: ChangePasswordBody, user: CurrentUser, db: Db) -> dict:
-    auth.change_password(db, user, body.current, body.next)
+    tokens = auth.change_password(db, user, body.current, body.next)
     db.commit()
-    return {"ok": True}
+    return tokens
 
 
 @router.get("/me")

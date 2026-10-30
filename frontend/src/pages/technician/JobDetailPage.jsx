@@ -139,7 +139,7 @@ export default function JobDetailPage() {
               </div>
             </Card>
           )}
-          {t.status === STATUS.HOAN_TAT && <Alert tone="success" title="Phiếu đã hoàn tất">{t.payment?.method === 'TIEN_MAT' ? `Đã thu tiền mặt ${money(t.payment.amount)}.` : 'Đã thanh toán chuyển khoản.'}</Alert>}
+          {t.status === STATUS.HOAN_TAT && <Alert tone="success" title="Phiếu đã hoàn tất">{t.payment?.status === 'MIEN_PHI' || !t.payment ? 'Không phát sinh chi phí.' : t.payment.method === 'TIEN_MAT' ? `Đã thu tiền mặt ${money(t.payment.amount)}.` : 'Đã thanh toán chuyển khoản.'}</Alert>}
 
           <Card title="Mô tả của khách">
             <div className="stack">
@@ -161,7 +161,7 @@ export default function JobDetailPage() {
         <div className="stack">
           <Card title="Khách hàng">
             <div className="stack">
-              <div><div className="strong">{t.customer?.name}</div><div className="small muted">{t.device?.type} · {t.device?.brand} {t.device?.model}</div></div>
+              <div><div className="strong">{t.customer?.name}</div><div className="small muted">{t.device?.type} · {t.device?.brand} {t.device?.model}</div>{t.device?.note && <div className="small muted">{t.device.note}</div>}</div>
               <div className="row-sm small" style={{ alignItems: 'flex-start' }}><MapPin size={16} style={{ flex: 'none', marginTop: 2 }} aria-hidden />{t.address}, phường {t.ward}, TP. Hồ Chí Minh</div>
               <div className="small"><span className="muted">Giờ hẹn: </span><span className="strong">{formatDateTime(t.assignment?.appointmentAt)}</span></div>
               {t.deviceCredentials && (

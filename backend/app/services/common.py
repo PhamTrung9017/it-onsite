@@ -131,8 +131,20 @@ def add_history(ticket: Ticket, status: str, actor_name: str, note: str = "") ->
     ticket.history.append(TicketHistory(status=status, at=utcnow(), by_name=actor_name, note=note))
 
 
-def transition(db: Session, ticket: Ticket, target: Status, actor: User | None, note: str = "", actor_name: str | None = None) -> None:
-    """Đường chuyển trạng thái duy nhất: kiểm tra hợp lệ, ghi lịch sử, nhật ký, thông báo."""
+def transition(
+    db: Session,
+    ticket: Ticket,
+    target: Status,
+    actor: User | None,
+    note: str = "",
+    actor_name: str | None = None,
+    notified_separately: tuple[int | None, ...] = (),
+) -> None:
+    """Đường chuyển trạng thái duy nhất: kiểm tra hợp lệ, ghi lịch sử, nhật ký, thông báo.
+
+    `notified_separately`: người đã nhận một thông báo riêng cho sự kiện này nên không gửi thêm.
+    """
+    previous = Status(ticket.status)
     if not can_transition(ticket.status, target):
         raise conflict(f'Không thể chuyển phiếu từ "{STATUS_LABEL[Status(ticket.status)]}" sang "{STATUS_LABEL[target]}".')
     ticket.status = target
@@ -144,12 +156,15 @@ def transition(db: Session, ticket: Ticket, target: Status, actor: User | None, 
         ticket.onsite_code_hash = None
     label = STATUS_LABEL[target]
     audit(db, actor, "CHUYEN_TRANG_THAI", ticket.id, f"{label} – {note}" if note else label)
-    recipients: list[int | None] = [ticket.customer_id, tech_user_id(db, ticket.assignment.tech_id if ticket.assignment else None)]
+    recipients: list[int | None] = [tech_user_id(db, ticket.assignment.tech_id if ticket.assignment else None)]
+    # Thu hồi phân công là việc nội bộ, khách không cần nhận lý do của kỹ thuật viên.
+    if not (previous == Status.DA_PHAN_CONG and target == Status.DA_TIEP_NHAN):
+        recipients.append(ticket.customer_id)
     if target in (Status.MOI, Status.DA_HUY, Status.CHO_THANH_TOAN):
         recipients += dispatcher_ids(db)
-    actor_id = actor.id if actor else None
+    skip = {actor.id if actor else None, *notified_separately}
     message = f"Phiếu {ticket.id}: {label}" + (f" ({note})." if note else ".")
-    notify(db, [r for r in recipients if r != actor_id], "Cập nhật trạng thái phiếu", message, ticket.id)
+    notify(db, [r for r in recipients if r not in skip], "Cập nhật trạng thái phiếu", message, ticket.id)
 
 
 def approved_total(ticket: Ticket) -> int:
@@ -170,16 +185,25 @@ def amount_due(ticket: Ticket, config: BusinessConfig) -> int:
     return amount_due_rule(main_quote_rejected(ticket), approved_total(ticket), ticket.is_warranty, config)
 
 
-def open_payment(ticket: Ticket, config: BusinessConfig) -> None:
-    ticket.payment = Payment(amount=amount_due(ticket, config) + ticket.late_reschedule_fee, method=None, status="CHO_THANH_TOAN")
+def open_payment(db: Session, ticket: Ticket, actor: User, config: BusinessConfig) -> None:
+    """Mở bước thanh toán; phiếu không phát sinh chi phí (ví dụ phiếu bảo hành) thì hoàn tất luôn."""
+    amount = amount_due(ticket, config) + ticket.late_reschedule_fee
+    if amount > 0:
+        ticket.payment = Payment(amount=amount, method=None, status="CHO_THANH_TOAN")
+        return
+    ticket.payment = Payment(amount=0, method=None, status="MIEN_PHI", paid_at=utcnow())
+    complete(db, ticket, actor, "Không phát sinh chi phí", config)
 
 
 def complete(db: Session, ticket: Ticket, actor: User, note: str, config: BusinessConfig) -> None:
-    """Hoàn tất phiếu và phát hành bảo hành theo từng hạng mục đã duyệt (BR-07)."""
-    transition(db, ticket, Status.HOAN_TAT, actor, note)
+    """Hoàn tất phiếu và phát hành bảo hành theo từng hạng mục đã duyệt (BR-07).
+
+    Phiếu bảo hành không phát hành bảo hành mới, thời hạn vẫn tính theo phiếu gốc.
+    """
+    transition(db, ticket, Status.HOAN_TAT, actor, note, notified_separately=(ticket.customer_id,))
     now = utcnow()
     ticket.completed_at = now
-    for quote in ticket.quotes:
+    for quote in [] if ticket.is_warranty else ticket.quotes:
         if quote.status not in ("DA_DUYET", "DUYET_MOT_PHAN"):
             continue
         for item in quote.items:

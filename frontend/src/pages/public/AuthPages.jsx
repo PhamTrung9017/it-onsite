@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, KeyRound, Lock, Mail, Phone, User } from 'lucide-react';
 import { ROLE_HOME, ROLE_LABEL, useAuth } from '../../context/AppContext.jsx';
-import { api } from '../../services/api.js';
+import { api, usingMockApi } from '../../services/api.js';
 import { Alert, Button, Field } from '../../components/ui.jsx';
 import { BrandLogo } from '../../components/layouts.jsx';
+
+const SHOW_DEMO_ACCOUNTS = usingMockApi || import.meta.env.VITE_DEMO_ACCOUNTS === 'true';
 
 const DEMO = [
   { role: 'KHACH', email: 'khach@demo.vn' },
@@ -46,7 +48,6 @@ export function LoginPage() {
     setError('');
     try {
       const u = await login(form.identifier, form.password);
-      // Quay lại trang đang mở trước khi đăng nhập; trang không đúng vai trò sẽ được chuyển về trang chính của vai trò
       navigate(location.state?.from || ROLE_HOME[u.roles[0]], { replace: true });
     } catch (err) {
       setError(err.message);
@@ -72,7 +73,7 @@ export function LoginPage() {
         <div className="row-between"><span /><Link to="/quen-mat-khau" className="small strong">Quên mật khẩu?</Link></div>
         <Button type="submit" size="lg" block loading={busy}>Đăng nhập</Button>
       </form>
-      <div className="stack-sm">
+      {SHOW_DEMO_ACCOUNTS && <div className="stack-sm">
         <div className="section-title">Tài khoản dùng thử · mật khẩu 123456</div>
         <div className="demo-accounts">
           {DEMO.map((d) => (
@@ -81,7 +82,7 @@ export function LoginPage() {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
     </AuthShell>
   );
 }
@@ -128,14 +129,21 @@ export function RegisterPage() {
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e) {
     e.preventDefault();
     if (!email.trim()) return;
     setBusy(true);
-    await api.requestPasswordReset({ email });
-    setBusy(false);
-    setSent(true);
+    setError('');
+    try {
+      await api.requestPasswordReset({ email });
+      setSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <AuthShell>
@@ -147,8 +155,57 @@ export function ForgotPasswordPage() {
         <Alert tone="success" title="Đã gửi yêu cầu" icon={KeyRound}>Nếu email này đã đăng ký, bạn sẽ nhận được đường dẫn đặt lại mật khẩu trong vài phút.</Alert>
       ) : (
         <form className="stack" onSubmit={submit}>
+          {error && <Alert tone="danger">{error}</Alert>}
           <Field label="Email" htmlFor="e"><div className="input-group"><Mail aria-hidden /><input id="e" type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} required /></div></Field>
           <Button type="submit" size="lg" block loading={busy}>Gửi đường dẫn</Button>
+        </form>
+      )}
+      <Link to="/dang-nhap" className="small strong">← Quay lại đăng nhập</Link>
+    </AuthShell>
+  );
+}
+
+export function ResetPasswordPage() {
+  const [params] = useSearchParams();
+  const token = params.get('token') || '';
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function submit(e) {
+    e.preventDefault();
+    if (password !== confirm) {
+      setError('Mật khẩu nhập lại không khớp.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api.resetPassword({ token, password });
+      setDone(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <AuthShell>
+      <div>
+        <h1>Đặt mật khẩu mới</h1>
+        <p className="muted" style={{ marginTop: 6 }}>Mật khẩu cần ít nhất 8 ký tự.</p>
+      </div>
+      {done ? (
+        <Alert tone="success" title="Đã đặt mật khẩu mới" icon={KeyRound}>Bạn có thể đăng nhập bằng mật khẩu vừa đặt.</Alert>
+      ) : !token ? (
+        <Alert tone="danger">Đường dẫn đặt lại mật khẩu không hợp lệ. Vui lòng yêu cầu lại.</Alert>
+      ) : (
+        <form className="stack" onSubmit={submit} noValidate>
+          {error && <Alert tone="danger">{error}</Alert>}
+          <Field label="Mật khẩu mới" htmlFor="np"><div className="input-group"><Lock aria-hidden /><input id="np" type="password" className="input" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} /></div></Field>
+          <Field label="Nhập lại mật khẩu" htmlFor="cp"><div className="input-group"><Lock aria-hidden /><input id="cp" type="password" className="input" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></div></Field>
+          <Button type="submit" size="lg" block loading={busy}>Lưu mật khẩu</Button>
         </form>
       )}
       <Link to="/dang-nhap" className="small strong">← Quay lại đăng nhập</Link>

@@ -15,3 +15,11 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "BLE"]
 testpaths = ["tests"]
 addopts = "-q"
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/seed.py"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = false

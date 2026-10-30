@@ -24,7 +24,7 @@ Tài liệu API tự sinh: http://localhost:8000/docs
 | `python -m app.seed catalog` | Nạp tham số nghiệp vụ, loại sự cố, bảng giá, linh kiện (không xóa dữ liệu cũ) |
 | `python -m app.seed admin --email ... --name ...` | Tạo tài khoản quản trị viên đầu tiên, nhập mật khẩu khi được hỏi |
 | `python -m app.seed demo` | Xóa toàn bộ dữ liệu và nạp dữ liệu trình diễn |
-| `pytest` | Chạy kiểm thử (cần cơ sở dữ liệu `itonsite_test`) |
+| `pytest --cov` | Chạy kiểm thử và đo độ bao phủ, yêu cầu tối thiểu 80% (cần cơ sở dữ liệu `itonsite_test`) |
 | `ruff check . && ruff format --check .` | Kiểm tra quy ước mã nguồn |
 
 Kiểm thử dùng cơ sở dữ liệu riêng, mặc định `postgresql+psycopg://itonsite:itonsite@localhost:5432/itonsite_test`; đổi bằng biến môi trường `DATABASE_URL`.
@@ -57,7 +57,7 @@ Mọi thay đổi trạng thái phiếu đi qua một hàm duy nhất `services/
 | BR-02 | Phí khảo sát chỉ thu khi khách từ chối báo giá chính (`domain/rules.py: amount_due`) |
 | BR-03 | Hủy, đổi lịch miễn phí trước mốc cấu hình, sát giờ tính phí khảo sát, không hủy sau check-in (`cancellation_policy`) |
 | BR-04 | Không phân công trùng lịch, tính cả thời lượng dịch vụ và thời gian đệm di chuyển (`has_conflict`) |
-| BR-05 | Gợi ý kỹ thuật viên: đúng kỹ năng → đúng khu vực → ít việc trong ngày → đánh giá cao (`rank_technicians`) |
+| BR-05 | Gợi ý kỹ thuật viên: đúng kỹ năng → đúng khu vực → ít việc trong ngày → đánh giá cao (`rank_technicians`); kỹ thuật viên trùng lịch hoặc ngoài lịch làm việc (UC18, `off_duty`) xếp cuối và không phân công được |
 | BR-06 | Quá hạn phản hồi thì tự thu hồi phân công (`services/dispatch.py: sweep_overdue_assignments`) |
 | BR-07 | Bảo hành phát hành theo từng hạng mục khi hoàn tất; chỉ chấp nhận yêu cầu còn hạn, phiếu bảo hành không tính phí |
 | BR-08 | Chuyển khoản hoàn tất khi điều phối viên xác nhận; tiền mặt hoàn tất khi kỹ thuật viên xác nhận đã thu, điều phối viên đối soát sau |
@@ -93,6 +93,6 @@ Chạy cùng tiến trình API (tắt bằng `BACKGROUND_JOBS=false`):
 
 ## Dịch vụ bên ngoài
 
-- **Gemini API**: đặt `GEMINI_API_KEY`. Mô tả sự cố được lọc số điện thoại, email, mật khẩu, số nhà trước khi gửi (NFR-10); quá 10 giây thì bỏ qua (NFR-03). Không có khóa thì hệ thống phân loại theo từ khóa.
+- **Gemini API**: đặt `GEMINI_API_KEY`. Mô tả sự cố được lọc số điện thoại, email, mật khẩu, số nhà trước khi gửi (NFR-10); quá 10 giây thì bỏ qua (NFR-03); kết quả sai định dạng thì gửi lại một lần (UC05 luồng 3a). Không có khóa thì hệ thống phân loại theo từ khóa.
 - **Telegram**: đặt `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, rồi đăng ký webhook `https://<tên miền>/api/telegram/webhook` với `secret_token` bằng `TELEGRAM_WEBHOOK_SECRET`. Người dùng bấm liên kết từ `POST /me/telegram-link` để gắn tài khoản.
 - **Email**: đặt `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.

@@ -2,6 +2,8 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import OutboxMessage
+from tests.conftest import tomorrow_at
+from tests.test_flow import create_ticket
 
 
 def test_overview_and_reports(qtv):
@@ -55,3 +57,23 @@ def test_technician_management(qtv):
     updated = qtv.ok("put", "/admin/technicians", {**created, "active": False})
     assert not updated["active"]
     assert qtv.put("/admin/technicians", {**created, "skills": []}).status_code == 400
+
+
+def test_schedule_blocks_assignment_uc18(client, qtv, dpv, khach):
+    ticket = create_ticket(khach, "Máy tính không lên nguồn, cần sửa.", hour=15)
+    received = dpv.ok("post", f"/tickets/{ticket['id']}/receive", {"categoryCode": "NGUON", "version": ticket["version"]})
+    tech = next(t for t in qtv.ok("get", "/admin/overview")["technicians"] if "NGUON" in t["skills"])
+    tomorrow = tomorrow_at(15)[:10]
+    assert qtv.put("/admin/technicians", {**tech, "schedule": {**tech["schedule"], "start": "21:00"}}).status_code == 400
+    qtv.ok("put", "/admin/technicians", {**tech, "schedule": {**tech["schedule"], "daysOff": [tomorrow]}})
+
+    query = received["slotStart"].replace("+", "%2B")
+    suggestion = next(
+        s for s in dpv.ok("get", f"/tickets/{ticket['id']}/technician-suggestions?appointmentAt={query}") if s["tech"]["id"] == tech["id"]
+    )
+    assert suggestion["offDuty"] is True
+    response = dpv.post(
+        f"/tickets/{ticket['id']}/assign",
+        {"techId": tech["id"], "appointmentAt": received["slotStart"], "version": received["version"]},
+    )
+    assert response.status_code == 409

@@ -41,14 +41,29 @@ IT OnSite là ứng dụng web giúp một dịch vụ cài đặt phần mềm,
 
 ```
 it-onsite/
-├── backend/        Mã nguồn REST API (FastAPI)
-├── frontend/       Mã nguồn giao diện (React), xem frontend/README.md
-├── infra/          Docker Compose, cấu hình triển khai
+├── backend/        REST API (FastAPI), xem backend/README.md
+├── frontend/       Giao diện (React), xem frontend/README.md
+├── infra/          Docker Compose, xem infra/README.md
 ├── docs/           Tài liệu dự án
 │   ├── srs/        Tài liệu đặc tả yêu cầu phần mềm (SRS)
 │   └── quan-ly/    WBS, bảng phân công nhiệm vụ
-└── .github/        Mẫu Issue, mẫu Pull Request
+└── .github/        Mẫu Issue, mẫu Pull Request, CI
 ```
+
+## Chạy hệ thống
+
+Cách nhanh nhất là Docker Compose:
+
+```bash
+cd infra
+cp .env.example .env        # điền DB_PASSWORD, JWT_SECRET, CREDENTIAL_KEY; DEMO_ACCOUNTS=true nếu dùng dữ liệu trình diễn
+docker compose up -d --build
+docker compose exec backend python -m app.seed demo
+```
+
+Mở http://localhost:8080. Tài khoản dùng thử: `khach@demo.vn`, `ktv@demo.vn`, `dpv@demo.vn`, `qtv@demo.vn`, mật khẩu `123456`.
+
+Khi phát triển, chạy riêng backend (`backend/README.md`) và frontend (`frontend/README.md`). Mỗi Pull Request được GitHub Actions kiểm tra mã nguồn, chạy kiểm thử backend, frontend và kiểm thử đầu-cuối.
 
 ## Tài liệu
 

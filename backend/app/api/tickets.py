@@ -63,7 +63,8 @@ async def classify(body: ClassifyBody, user: CurrentUser, db: Db) -> dict:
         return result
     category = next(c for c in categories if c.code == result["categoryCode"])
     service = db.get(Service, category.service_id) if category.service_id else None
-    return {**result, "category": category_json(category), "suggestedService": service_json(service) if service else None}
+    suggested = service_json(service) if service and service.active else None
+    return {**result, "category": category_json(category), "suggestedService": suggested}
 
 
 @router.post("/tickets", status_code=201)

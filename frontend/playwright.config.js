@@ -2,17 +2,21 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Kiểm thử đầu-cuối (E2E) trên bản build chạy bằng `vite preview`.
- * Dùng Chromium do Playwright cài (`npx playwright install chromium`);
- * có thể chỉ định trình duyệt khác qua biến môi trường PW_CHROMIUM.
+ * `npm run test:e2e` dùng API giả lập; `npm run test:e2e:backend` dùng backend thật đang chạy ở cổng 8000
+ * và nạp lại dữ liệu trình diễn trước mỗi kịch bản.
  */
+const backend = Boolean(process.env.E2E_BACKEND) || process.env.npm_lifecycle_event === 'test:e2e:backend';
+const port = backend ? 4174 : 4173;
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,
-  reporter: [['list']],
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? [['github'], ['list']] : [['list']],
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: `http://localhost:${port}`,
     timezoneId: 'Asia/Ho_Chi_Minh',
     locale: 'vi-VN',
     trace: 'retain-on-failure',
@@ -23,9 +27,12 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: /giao-dien\.spec\.js/ },
   ],
   webServer: {
-    command: 'npm run build && npm run preview -- --port 4173 --strictPort',
-    url: 'http://localhost:4173',
-    reuseExistingServer: true,
+    command: backend
+      ? `npx vite build --outDir dist-e2e && npx vite preview --outDir dist-e2e --port ${port} --strictPort`
+      : `npm run build && npm run preview -- --port ${port} --strictPort`,
+    env: backend ? { VITE_API_URL: '/api' } : {},
+    url: `http://localhost:${port}`,
+    reuseExistingServer: !backend,
     timeout: 120_000,
   },
 });

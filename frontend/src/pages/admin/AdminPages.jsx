@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Plus, Save, ShieldCheck } from 'lucide-react';
+import { Pencil, Plus, Save, ShieldCheck, X } from 'lucide-react';
 import { useAction, useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
 import { ROLE_LABEL, useAuth } from '../../context/AppContext.jsx';
 import { Alert, Badge, Button, Card, ErrorState, Field, Loading, Modal, Money, PageHead, Stars } from '../../components/ui.jsx';
-import { formatDateTime } from '../../lib/format.js';
+import { WEEKDAY_LABEL, formatDate, formatDateTime, formatSchedule, toDateInput } from '../../lib/format.js';
+import { DEFAULT_SCHEDULE } from '../../lib/rules.js';
 
 function useAdmin() {
   return useLoad(() => api.adminData(), []);
@@ -29,6 +30,44 @@ function MultiChips({ options, value, onChange }) {
   );
 }
 
+function ScheduleEditor({ value, onChange }) {
+  const [dayOff, setDayOff] = useState('');
+  const today = toDateInput(new Date());
+  const upcoming = value.daysOff.filter((d) => d >= today);
+  function addDayOff() {
+    if (!dayOff || dayOff < today || value.daysOff.includes(dayOff)) return;
+    onChange({ ...value, daysOff: [...upcoming, dayOff].sort() });
+    setDayOff('');
+  }
+  return (
+    <>
+      <Field label="Ngày làm việc trong tuần">
+        <MultiChips options={[1, 2, 3, 4, 5, 6, 7].map((d) => ({ value: d, label: WEEKDAY_LABEL[d] }))} value={value.workDays}
+          onChange={(workDays) => onChange({ ...value, workDays: workDays.sort((a, b) => a - b) })} />
+      </Field>
+      <div className="grid-2">
+        <Field label="Bắt đầu" htmlFor="ws"><input id="ws" type="time" className="input" value={value.start} onChange={(e) => onChange({ ...value, start: e.target.value })} /></Field>
+        <Field label="Kết thúc" htmlFor="we"><input id="we" type="time" className="input" value={value.end} onChange={(e) => onChange({ ...value, end: e.target.value })} /></Field>
+      </div>
+      <Field label="Ngày nghỉ" htmlFor="wo" hint="Không phân công kỹ thuật viên vào các ngày nghỉ đã khai báo.">
+        <div className="row-sm">
+          <input id="wo" type="date" className="input" style={{ maxWidth: 220 }} min={today} value={dayOff} onChange={(e) => setDayOff(e.target.value)} />
+          <Button variant="outline" icon={Plus} disabled={!dayOff} onClick={addDayOff}>Thêm</Button>
+        </div>
+      </Field>
+      {upcoming.length > 0 && (
+        <div className="chip-select" aria-label="Ngày nghỉ sắp tới">
+          {upcoming.map((d) => (
+            <button key={d} type="button" aria-label={`Bỏ ngày nghỉ ${formatDate(d)}`} onClick={() => onChange({ ...value, daysOff: upcoming.filter((x) => x !== d) })}>
+              Nghỉ {formatDate(`${d}T00:00`)} <X size={12} />
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ---------------- UC18 Kỹ thuật viên ---------------- */
 export function TechniciansPage() {
   const { data, loading, error, reload } = useAdmin();
@@ -42,18 +81,19 @@ export function TechniciansPage() {
   }
   return (
     <>
-      <PageHead title="Kỹ thuật viên" sub="Kỹ năng và khu vực phụ trách dùng để gợi ý phân công" actions={<Button icon={Plus} onClick={() => setEdit({ name: '', email: '', phone: '', skills: [], areas: [], active: true })}>Thêm kỹ thuật viên</Button>} />
+      <PageHead title="Kỹ thuật viên" sub="Kỹ năng, khu vực phụ trách và lịch làm việc dùng để gợi ý phân công" actions={<Button icon={Plus} onClick={() => setEdit({ name: '', email: '', phone: '', skills: [], areas: [], active: true, schedule: { ...DEFAULT_SCHEDULE } })}>Thêm kỹ thuật viên</Button>} />
       <Card bodyClass="table-wrap">
         <table className="table">
-          <thead><tr><th>Kỹ thuật viên</th><th>Kỹ năng</th><th>Khu vực</th><th>Đánh giá</th><th className="right">Đang làm / Đã xong</th><th>Hoạt động</th><th /></tr></thead>
+          <thead><tr><th>Kỹ thuật viên</th><th>Kỹ năng</th><th>Khu vực</th><th>Lịch làm việc</th><th>Đánh giá</th><th className="right">Đang làm / Đã xong</th><th>Hoạt động</th><th /></tr></thead>
           <tbody>
             {data.technicians.map((t) => (
               <tr key={t.id}>
                 <td><div className="strong">{t.name}</div><div className="tiny muted">{t.phone}</div></td>
                 <td className="small" style={{ maxWidth: 260 }}>{t.skills.map(catName).join(', ')}</td>
                 <td className="small" style={{ maxWidth: 220 }}>{t.areas.join(', ')}</td>
+                <td className="small nowrap">{formatSchedule(t.schedule)}</td>
                 <td><span className="row-sm small"><Stars value={t.rating} size={13} />{t.rating}</span></td>
-                <td className="right">{t.active_jobs} / {t.done}</td>
+                <td className="right">{t.activeJobs} / {t.done}</td>
                 <td><Toggle on={t.active} label={`Hoạt động: ${t.name}`} onChange={(v) => save({ ...t, active: v })} /></td>
                 <td className="right"><Button variant="ghost" size="sm" icon={Pencil} onClick={() => setEdit({ ...t })}>Sửa</Button></td>
               </tr>
@@ -72,6 +112,7 @@ export function TechniciansPage() {
             </div>
             <Field label="Kỹ năng"><MultiChips options={data.categories.map((c) => ({ value: c.code, label: c.name }))} value={edit.skills} onChange={(skills) => setEdit({ ...edit, skills })} /></Field>
             <Field label="Khu vực phụ trách"><MultiChips options={data.allAreas.map((a) => ({ value: a, label: a }))} value={edit.areas} onChange={(areas) => setEdit({ ...edit, areas })} /></Field>
+            <ScheduleEditor value={edit.schedule || DEFAULT_SCHEDULE} onChange={(schedule) => setEdit({ ...edit, schedule })} />
           </>
         )}
       </Modal>

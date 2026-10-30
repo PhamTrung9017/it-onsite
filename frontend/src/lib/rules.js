@@ -51,9 +51,35 @@ export function hasConflict(techId, appointmentAt, durationMin, tickets, config,
   });
 }
 
+export const DEFAULT_SCHEDULE = { workDays: [1, 2, 3, 4, 5, 6], start: '08:00', end: '20:00', daysOff: [] };
+const MAX_DAYS_OFF = 60;
+
+const toMinutes = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** UC18: lịch hẹn rơi vào ngày nghỉ, ngày không làm hoặc vượt ngoài giờ làm của KTV. */
+export function offDuty(schedule, appointmentAt, durationMin) {
+  const s = schedule || DEFAULT_SCHEDULE;
+  const start = new Date(appointmentAt);
+  const end = new Date(start.getTime() + durationMin * MINUTE);
+  const weekday = start.getDay() === 0 ? 7 : start.getDay();
+  if (s.daysOff.includes(isoDate(start)) || !s.workDays.includes(weekday)) return true;
+  if (isoDate(end) !== isoDate(start)) return true;
+  return !(toMinutes(s.start) <= start.getHours() * 60 + start.getMinutes() && end.getHours() * 60 + end.getMinutes() <= toMinutes(s.end));
+}
+
+export function validateSchedule(s) {
+  if (!s.workDays?.length) return 'Chọn ít nhất một ngày làm việc trong tuần.';
+  if (!/^\d{2}:\d{2}$/.test(s.start) || !/^\d{2}:\d{2}$/.test(s.end)) return 'Giờ làm việc không hợp lệ.';
+  if (toMinutes(s.start) >= toMinutes(s.end)) return 'Giờ bắt đầu làm việc phải trước giờ kết thúc.';
+  if (s.daysOff.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))) return 'Ngày nghỉ không hợp lệ.';
+  if (s.daysOff.length > MAX_DAYS_OFF) return `Chỉ lưu tối đa ${MAX_DAYS_OFF} ngày nghỉ.`;
+  return null;
+}
+
 /**
  * BR-05: xếp hạng KTV gợi ý: đúng kỹ năng → đúng khu vực → ít việc trong ngày → điểm đánh giá cao.
- * BR-04: loại KTV bị trùng lịch (trả về kèm cờ conflict để giao diện hiển thị lý do).
+ * KTV trùng lịch (BR-04) hoặc ngoài lịch làm việc (UC18) xếp cuối, kèm cờ để giao diện hiển thị lý do.
  */
 export function rankTechnicians({ ticket, technicians, tickets, config, appointmentAt }) {
   const day = new Date(appointmentAt).toDateString();
@@ -67,10 +93,11 @@ export function rankTechnicians({ ticket, technicians, tickets, config, appointm
           && new Date(t.assignment.appointmentAt).toDateString() === day,
       ).length;
       const conflict = hasConflict(tech.id, appointmentAt, ticket.estimatedMinutes || 60, tickets, config, ticket.id);
-      return { tech, skill, area, jobsToday, conflict };
+      const away = offDuty(tech.schedule, appointmentAt, ticket.estimatedMinutes || 60);
+      return { tech, skill, area, jobsToday, conflict, offDuty: away };
     })
     .sort((a, b) =>
-      Number(a.conflict) - Number(b.conflict)
+      Number(a.conflict || a.offDuty) - Number(b.conflict || b.offDuty)
       || Number(b.skill) - Number(a.skill)
       || Number(b.area) - Number(a.area)
       || a.jobsToday - b.jobsToday

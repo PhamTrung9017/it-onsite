@@ -63,3 +63,14 @@ export function timeSlots(start, end, step = 30) {
   for (let m = sh * 60 + sm; m <= eh * 60 + em - 60; m += step) out.push(`${pad(Math.floor(m / 60))}:${pad(m % 60)}`);
   return out;
 }
+
+export const WEEKDAY_LABEL = { 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7', 7: 'CN' };
+
+/** Mô tả ngắn lịch làm việc, ví dụ "T2–T7, 08:00–20:00". */
+export function formatSchedule(schedule) {
+  if (!schedule) return '—';
+  const days = [...schedule.workDays].sort((a, b) => a - b);
+  const consecutive = days.length > 2 && days.every((d, i) => i === 0 || d === days[i - 1] + 1);
+  const dayText = consecutive ? `${WEEKDAY_LABEL[days[0]]}–${WEEKDAY_LABEL[days.at(-1)]}` : days.map((d) => WEEKDAY_LABEL[d]).join(', ');
+  return `${dayText}, ${schedule.start}–${schedule.end}`;
+}

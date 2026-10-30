@@ -3,12 +3,13 @@ import { MobileAppLayout, PublicLayout, RequireRole, ShellLayout } from './compo
 import { NotificationsPage } from './components/ticket.jsx';
 import HomePage from './pages/public/HomePage.jsx';
 import PricingPage from './pages/public/PricingPage.jsx';
-import { ForgotPasswordPage, LoginPage, NotFoundPage, RegisterPage } from './pages/public/AuthPages.jsx';
+import { ForgotPasswordPage, LoginPage, NotFoundPage, RegisterPage, ResetPasswordPage } from './pages/public/AuthPages.jsx';
 import TicketsPage from './pages/customer/TicketsPage.jsx';
 import CreateRequestPage from './pages/customer/CreateRequestPage.jsx';
 import TicketDetailPage from './pages/customer/TicketDetailPage.jsx';
 import QuoteReviewPage from './pages/customer/QuoteReviewPage.jsx';
 import PaymentPage from './pages/customer/PaymentPage.jsx';
+import ReceiptPage from './pages/customer/ReceiptPage.jsx';
 import WarrantyPage from './pages/customer/WarrantyPage.jsx';
 import ProfilePage from './pages/customer/ProfilePage.jsx';
 import JobsPage from './pages/technician/JobsPage.jsx';
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="dang-nhap" element={<LoginPage />} />
       <Route path="dang-ky" element={<RegisterPage />} />
       <Route path="quen-mat-khau" element={<ForgotPasswordPage />} />
+      <Route path="dat-lai-mat-khau" element={<ResetPasswordPage />} />
 
       <Route path="khach" element={<RequireRole role="KHACH" />}>
         <Route element={<MobileAppLayout role="KHACH" />}>
@@ -40,6 +42,7 @@ export default function App() {
           <Route path="phieu/:id" element={<TicketDetailPage />} />
           <Route path="phieu/:id/bao-gia" element={<QuoteReviewPage />} />
           <Route path="phieu/:id/thanh-toan" element={<PaymentPage />} />
+          <Route path="phieu/:id/bien-nhan" element={<ReceiptPage />} />
           <Route path="tao-yeu-cau" element={<CreateRequestPage />} />
           <Route path="bao-hanh" element={<WarrantyPage />} />
           <Route path="ho-so" element={<ProfilePage />} />

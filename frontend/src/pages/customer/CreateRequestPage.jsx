@@ -40,7 +40,7 @@ export default function CreateRequestPage() {
   }, []);
   const [step, setStep] = useState(0);
   const [deviceId, setDeviceId] = useState('');
-  const [newDevice, setNewDevice] = useState({ type: 'Laptop', brand: '', model: '' });
+  const [newDevice, setNewDevice] = useState({ type: 'Laptop', brand: '', model: '', note: '' });
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState([]);
   const [ai, setAi] = useState(null);
@@ -181,6 +181,7 @@ export default function CreateRequestPage() {
                     <Field label="Hãng" htmlFor="brand"><input id="brand" className="input" placeholder="Ví dụ: Dell" value={newDevice.brand} onChange={(e) => setNewDevice({ ...newDevice, brand: e.target.value })} /></Field>
                     <Field label="Dòng máy" htmlFor="model"><input id="model" className="input" placeholder="Ví dụ: Inspiron 15 3520" value={newDevice.model} onChange={(e) => setNewDevice({ ...newDevice, model: e.target.value })} /></Field>
                   </div>
+                  <Field label="Ghi chú thiết bị (không bắt buộc)" htmlFor="dnote"><input id="dnote" className="input" maxLength={255} placeholder="Ví dụ: máy đặt ở phòng kế toán, tầng 2" value={newDevice.note} onChange={(e) => setNewDevice({ ...newDevice, note: e.target.value })} /></Field>
                   {errors.device && <span className="small" style={{ color: 'var(--danger)' }}>{errors.device}</span>}
                 </div>
               )}

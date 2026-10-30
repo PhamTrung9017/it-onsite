@@ -1,14 +1,17 @@
-import { MapPin, Wrench } from 'lucide-react';
+import { CalendarDays, MapPin, Wrench } from 'lucide-react';
 import { useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
 import { Badge, Card, ErrorState, Loading, PageHead, Stars } from '../../components/ui.jsx';
-import { formatDate, initials, money } from '../../lib/format.js';
+import { formatDate, formatSchedule, initials, money, toDateInput } from '../../lib/format.js';
+import { TelegramCard } from '../../components/TelegramCard.jsx';
 
 export default function TechProfilePage() {
   const { data, loading, error, reload } = useLoad(() => api.myTechProfile(), []);
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   const { user, tech, categories, stats, reviews } = data;
+  const today = toDateInput(new Date());
+  const daysOff = (tech.schedule?.daysOff || []).filter((d) => d >= today);
   return (
     <>
       <PageHead title="Hồ sơ kỹ thuật viên" />
@@ -33,6 +36,13 @@ export default function TechProfilePage() {
           <Card title="Kỹ năng"><div className="chip-select">{tech.skills.map((s) => <span key={s} className="badge tone-primary plain"><Wrench size={13} aria-hidden />{categories.find((c) => c.code === s)?.name}</span>)}</div></Card>
           <Card title="Khu vực phụ trách"><div className="chip-select">{tech.areas.map((a) => <span key={a} className="badge tone-info plain"><MapPin size={13} aria-hidden />{a}</span>)}</div></Card>
         </div>
+        <Card title="Lịch làm việc">
+          <div className="row-sm"><CalendarDays size={16} aria-hidden /><span className="strong">{formatSchedule(tech.schedule)}</span></div>
+          <p className="small muted" style={{ marginTop: 6 }}>
+            {daysOff.length ? `Ngày nghỉ sắp tới: ${daysOff.map((d) => formatDate(`${d}T00:00`)).join(', ')}.` : 'Chưa có ngày nghỉ sắp tới.'} Cần đổi lịch, vui lòng báo quản trị viên.
+          </p>
+        </Card>
+        <TelegramCard />
         <Card title="Đánh giá gần đây" bodyClass="list">
           {reviews.length === 0 ? <div className="card-body small muted">Chưa có đánh giá.</div> : reviews.map((r) => (
             <div key={r.ticketId} className="list-item" style={{ alignItems: 'flex-start' }}>

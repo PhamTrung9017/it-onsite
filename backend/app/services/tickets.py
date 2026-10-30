@@ -8,11 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, forbidden, not_found
 from app.core.security import encrypt_secret
+from app.domain.classifier import URGENCY_LEVELS
 from app.domain.rules import (
     Booking,
     BusinessConfig,
+    WorkSchedule,
     cancellation_policy,
     has_conflict,
+    off_duty,
     review_policy,
     validate_review,
     validate_slot,
@@ -56,7 +59,29 @@ from app.services.common import (
 )
 
 MAX_REQUEST_PHOTOS = 5
-AI_FIELDS = ("categoryCode", "confidence", "urgency", "reason", "state", "promptVersion", "ms")
+AI_STATES = ("ok", "low_confidence", "failed")
+
+
+def clean_ai_result(raw: dict | None) -> dict | None:
+    """Chỉ giữ các trường của kết quả phân loại, đúng kiểu dữ liệu, để điều phối viên xem lại."""
+    if not raw or raw.get("state") not in AI_STATES:
+        return None
+    if raw["state"] == "failed":
+        return {"state": "failed"}
+    try:
+        confidence = round(min(max(float(raw.get("confidence", 0)), 0.0), 1.0), 2)
+        ms = max(int(raw.get("ms", 0)), 0)
+    except (TypeError, ValueError):
+        return None
+    return {
+        "categoryCode": str(raw.get("categoryCode", ""))[:20],
+        "confidence": confidence,
+        "urgency": raw.get("urgency") if raw.get("urgency") in URGENCY_LEVELS else "TRUNG_BINH",
+        "reason": str(raw.get("reason", ""))[:300],
+        "state": raw["state"],
+        "promptVersion": str(raw.get("promptVersion", ""))[:20],
+        "ms": ms,
+    }
 
 
 def next_ticket_id(db: Session, now: datetime) -> str:
@@ -154,7 +179,7 @@ def create_ticket(db: Session, user: User, data) -> Ticket:
         raise ApiError("Bạn cần đồng ý điều khoản dịch vụ và xử lý dữ liệu cá nhân.")
     if len(data.photos) > MAX_REQUEST_PHOTOS:
         raise ApiError(f"Mỗi yêu cầu đính kèm tối đa {MAX_REQUEST_PHOTOS} ảnh.")
-    ai = {k: data.ai_result[k] for k in AI_FIELDS if k in data.ai_result} if data.ai_result else None
+    ai = clean_ai_result(data.ai_result)
     category_code = data.category_code or (ai or {}).get("categoryCode") or "KHAC"
     urgency = (ai or {}).get("urgency") or "TRUNG_BINH"
     ticket = create_ticket_record(
@@ -167,7 +192,7 @@ def create_ticket(db: Session, user: User, data) -> Ticket:
         slot_start=data.slot_start,
         category_code=category_code,
         actor_name=user.name,
-        urgency=urgency if urgency in ("THAP", "TRUNG_BINH", "CAO") else "TRUNG_BINH",
+        urgency=urgency,
         ai_result=ai,
         credentials=data.device_credentials.strip(),
     )
@@ -209,29 +234,34 @@ def ticket_policies(ticket: Ticket, config: BusinessConfig) -> dict:
     }
 
 
-def _owned_or_dispatcher(user: User, ticket: Ticket, message: str) -> None:
+def _owned_or_dispatcher(user: User, ticket: Ticket, message: str) -> bool:
+    """Trả về True khi chính khách hàng thao tác; điều phối viên thao tác thay thì khách không chịu phí (BR-03)."""
     require_roles(user, "KHACH", "DPV")
-    if "DPV" not in user.roles and ticket.customer_id != user.id:
+    if ticket.customer_id == user.id:
+        return True
+    if "DPV" not in user.roles:
         raise forbidden(message)
+    return False
 
 
 def cancel_ticket(db: Session, user: User, ticket_id: str, reason: str) -> Ticket:
     ticket = find_ticket(db, ticket_id, lock=True)
-    _owned_or_dispatcher(user, ticket, "Bạn không có quyền hủy phiếu này.")
+    by_customer = _owned_or_dispatcher(user, ticket, "Bạn không có quyền hủy phiếu này.")
     config = load_config(db)
     policy = cancellation_policy(ticket.status, appointment_of(ticket), config, utcnow())
     if not policy.allowed:
         raise conflict(policy.reason)
     if not reason.strip():
         raise ApiError("Vui lòng cho biết lý do hủy.")
-    ticket.cancel = {"by": user.id, "byName": user.name, "reason": reason.strip(), "fee": policy.fee, "at": utcnow().isoformat()}
+    fee = policy.fee if by_customer else 0
+    ticket.cancel = {"by": user.id, "byName": user.name, "reason": reason.strip(), "fee": fee, "at": utcnow().isoformat()}
     transition(db, ticket, Status.DA_HUY, user, reason.strip())
     return ticket
 
 
 def reschedule_ticket(db: Session, user: User, ticket_id: str, slot_start: datetime) -> Ticket:
     ticket = find_ticket(db, ticket_id, lock=True)
-    _owned_or_dispatcher(user, ticket, "Bạn không có quyền đổi lịch phiếu này.")
+    by_customer = _owned_or_dispatcher(user, ticket, "Bạn không có quyền đổi lịch phiếu này.")
     config = load_config(db)
     now = utcnow()
     policy = cancellation_policy(ticket.status, appointment_of(ticket), config, now)
@@ -242,6 +272,9 @@ def reschedule_ticket(db: Session, user: User, ticket_id: str, slot_start: datet
         raise ApiError(error)
     assignment = ticket.assignment
     if assignment and ticket.status in (Status.DA_PHAN_CONG, Status.KTV_DA_NHAN):
+        tech = db.get(Technician, assignment.tech_id, with_for_update=True)
+        if off_duty(WorkSchedule.from_dict(tech.schedule), slot_start, ticket.estimated_minutes, get_settings().tz):
+            raise conflict("Kỹ thuật viên phụ trách không làm việc vào giờ này. Vui lòng chọn khung giờ khác.")
         if has_conflict(assignment.tech_id, slot_start, ticket.estimated_minutes, bookings(db), config, ticket.id):
             raise conflict("Kỹ thuật viên phụ trách đã có lịch ở khung giờ này. Vui lòng chọn khung giờ khác.")
         assignment.appointment_at = slot_start
@@ -252,10 +285,11 @@ def reschedule_ticket(db: Session, user: User, ticket_id: str, slot_start: datet
             f"Phiếu {ticket.id} đổi lịch hẹn, vui lòng xem giờ mới.",
             ticket.id,
         )
+    fee = policy.fee if by_customer else 0
     ticket.slot_start = slot_start
-    ticket.late_reschedule_fee += policy.fee
+    ticket.late_reschedule_fee += fee
     touch(ticket)
-    note = "Đổi lịch hẹn" + (f" (phí đổi lịch sát giờ {money(policy.fee)})" if policy.fee else "")
+    note = "Đổi lịch hẹn" + (f" (phí đổi lịch sát giờ {money(fee)})" if fee else "")
     add_history(ticket, ticket.status, user.name, note)
     notify(
         db, [d for d in dispatcher_ids(db) if d != user.id], "Khách đổi lịch hẹn", f"Phiếu {ticket.id} đổi sang khung giờ mới.", ticket.id
@@ -287,15 +321,16 @@ def apply_quote_decision(
         if quote.type == "CHINH":
             note = "Khách từ chối báo giá" if ticket.is_warranty else "Khách từ chối báo giá, thu phí khảo sát"
             transition(db, ticket, Status.CHO_THANH_TOAN, actor, note, actor_name)
-            open_payment(ticket, config)
+            open_payment(db, ticket, actor, config)
         else:
             transition(db, ticket, Status.DANG_THUC_HIEN, actor, "Khách từ chối báo giá bổ sung, tiếp tục hạng mục đã duyệt", actor_name)
         return
     if decision == "partial":
-        if not item_ids:
+        chosen = {item.id for item in quote.items} & set(item_ids)
+        if not chosen:
             raise ApiError("Chọn ít nhất một hạng mục, hoặc chọn từ chối báo giá.")
         for item in quote.items:
-            item.selected = item.id in item_ids
+            item.selected = item.id in chosen
         quote.status = "DA_DUYET" if all(i.selected for i in quote.items) else "DUYET_MOT_PHAN"
     else:
         for item in quote.items:
@@ -334,7 +369,7 @@ def accept_work(db: Session, user: User, ticket_id: str, ok: bool, reason: str) 
     if ok:
         ticket.acceptance = {"result": "DAT", "at": now}
         transition(db, ticket, Status.CHO_THANH_TOAN, user, "Khách nghiệm thu đạt")
-        open_payment(ticket, load_config(db))
+        open_payment(db, ticket, user, load_config(db))
     else:
         if not reason.strip():
             raise ApiError("Vui lòng mô tả điểm chưa đạt để kỹ thuật viên xử lý lại.")
@@ -415,7 +450,7 @@ def submit_review(db: Session, user: User, ticket_id: str, stars: int, comment: 
 def list_my_warranties(db: Session, user: User) -> list[dict]:
     now = utcnow()
     warranties = db.scalars(select(Warranty).where(Warranty.customer_id == user.id)).all()
-    claims = db.scalars(select(WarrantyClaim).where(WarrantyClaim.customer_id == user.id, WarrantyClaim.status != "TU_CHOI")).all()
+    claims = db.scalars(select(WarrantyClaim).where(WarrantyClaim.customer_id == user.id).order_by(WarrantyClaim.created_at)).all()
     claim_by_warranty = {c.warranty_id: c for c in claims}
     result = []
     for w in warranties:

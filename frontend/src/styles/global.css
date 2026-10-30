@@ -347,3 +347,25 @@ a.list-item:hover { background: #fafcfb; color: inherit; }
 .qr-box { background: #fff; padding: 14px; border-radius: 16px; border: 1px solid var(--line); display: inline-block; }
 .qr-box canvas, .qr-box img { width: 220px; height: 220px; }
 .countdown { font-family: var(--mono); font-weight: 700; }
+
+/* Biên nhận dịch vụ (UC06) */
+.receipt { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 20px; }
+.receipt-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+.receipt-brand { font-size: 20px; font-weight: 800; color: var(--brand-600); }
+.receipt-title { font-size: 18px; letter-spacing: .04em; margin-bottom: 4px; }
+.receipt-table tfoot td { font-size: 15px; border-top: 2px solid var(--line); }
+.receipt-foot { border-top: 1px dashed var(--line); padding-top: 12px; }
+.receipt-sub { display: none; }
+@media (max-width: 640px) {
+  .receipt { padding: 16px; }
+  .receipt-head .right { text-align: left; }
+  .receipt-table th, .receipt-table td { padding: 10px 8px; }
+  .receipt-table .col-opt { display: none; }
+  .receipt-sub { display: block; }
+}
+@media print {
+  .topbar, .bottomnav, .sidebar, .no-print, .toast-region { display: none !important; }
+  body, .app-main, .shell-content { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+  .receipt { border: 0; border-radius: 0; padding: 0; }
+  .receipt-brand { color: #000; }
+}

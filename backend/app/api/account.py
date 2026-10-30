@@ -29,7 +29,7 @@ def list_devices(user: CurrentUser, db: Db) -> list[dict]:
 
 @router.post("/me/devices", status_code=201)
 def add_device(body: DeviceBody, user: CurrentUser, db: Db) -> dict:
-    device = account.add_device(db, user, body.type, body.brand, body.model)
+    device = account.add_device(db, user, body.type, body.brand, body.model, body.note)
     db.commit()
     return device_json(device)
 

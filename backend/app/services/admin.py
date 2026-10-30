@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, not_found
 from app.core.security import hash_password, new_opaque_token, token_digest
 from app.domain.areas import WARDS
-from app.domain.rules import BusinessConfig
+from app.domain.rules import BusinessConfig, WorkSchedule, validate_schedule
 from app.domain.status import BUSY_STATUSES, Status
 from app.models import (
     Assignment,
@@ -26,7 +26,7 @@ from app.models import (
     Ticket,
     User,
 )
-from app.services.auth import email_taken, validate_email, validate_phone
+from app.services.auth import email_taken, revoke_all_sessions, validate_email, validate_phone
 from app.services.common import audit, load_config, require_roles, utcnow
 
 ROLES = ("KHACH", "KTV", "DPV", "QTV")
@@ -164,19 +164,35 @@ def _clean_skills_areas(db: Session, skills: list[str], areas: list[str]) -> tup
 def save_technician(db: Session, admin: User, data) -> Technician:
     require_roles(admin, "QTV")
     skills, areas = _clean_skills_areas(db, data.skills, data.areas)
+    schedule = WorkSchedule.from_dict(data.schedule) if data.schedule else None
+    if schedule is not None and (error := validate_schedule(schedule)):
+        raise ApiError(error)
     if data.id:
         tech = db.get(Technician, data.id)
         if tech is None:
             raise not_found("Không tìm thấy kỹ thuật viên.")
         tech.skills, tech.areas, tech.active = skills, areas, data.active
+        if schedule is not None:
+            tech.schedule = schedule.to_dict()
         if data.name and data.name.strip():
             tech.user.name = data.name.strip()
         if data.phone:
-            tech.user.phone = validate_phone(data.phone)
+            phone = validate_phone(data.phone)
+            if phone != tech.user.phone and db.scalar(select(func.count()).select_from(User).where(User.phone == phone)):
+                raise conflict("Số điện thoại đã được dùng cho tài khoản khác.")
+            tech.user.phone = phone
         audit(db, admin, "SUA_KTV", str(tech.id), tech.user.name)
         return tech
     user = _new_internal_user(db, data.name, data.email or "", data.phone or "", ["KTV"])
-    tech = Technician(user_id=user.id, skills=skills, areas=areas, rating=5, rating_count=0, active=True)
+    tech = Technician(
+        user_id=user.id,
+        skills=skills,
+        areas=areas,
+        rating=5,
+        rating_count=0,
+        active=True,
+        schedule=(schedule or WorkSchedule()).to_dict(),
+    )
     db.add(tech)
     db.flush()
     audit(db, admin, "THEM_KTV", str(tech.id), user.name)
@@ -200,6 +216,10 @@ def save_roles(db: Session, admin: User, user_id: int, roles: list[str], locked:
         raise conflict("Không thể tự gỡ quyền quản trị hoặc tự khóa tài khoản của mình.")
     if "KTV" in roles:
         _ensure_technician(db, user, load_config(db))
+    elif user.technician is not None:
+        user.technician.active = False
+    if locked and not user.locked:
+        revoke_all_sessions(db, user)
     user.roles = roles
     user.locked = locked
     audit(db, admin, "PHAN_QUYEN", user.email, ", ".join(roles) + (" (khóa)" if locked else ""))

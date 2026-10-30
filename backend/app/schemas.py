@@ -52,6 +52,7 @@ class DeviceBody(Body):
     type: str = Field(max_length=20)
     brand: str = Field(max_length=80)
     model: str = Field(max_length=120)
+    note: str = Field(default="", max_length=255)
 
 
 class ReasonBody(Body):
@@ -179,6 +180,7 @@ class TechnicianBody(Body):
     skills: list[str]
     areas: list[str]
     active: bool = True
+    schedule: dict | None = None
 
 
 class RolesBody(Body):

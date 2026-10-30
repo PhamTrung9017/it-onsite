@@ -6,13 +6,16 @@ from app.domain.rules import (
     Booking,
     BusinessConfig,
     Candidate,
+    WorkSchedule,
     amount_due,
     can_complete,
     cancellation_policy,
     has_conflict,
+    off_duty,
     rank_technicians,
     review_policy,
     validate_review,
+    validate_schedule,
     validate_slot,
     warranty_status,
 )
@@ -119,3 +122,24 @@ def test_config_round_trip():
     data = CONFIG.to_dict()
     assert BusinessConfig.from_dict(data) == CONFIG
     assert datetime.now(UTC).tzinfo is UTC
+
+
+def test_work_schedule_uc18():
+    weekdays = WorkSchedule(work_days=[1, 2, 3, 4, 5], start="08:00", end="17:00", days_off=["2026-11-03"])
+    monday = datetime(2026, 11, 2, 9, 0, tzinfo=TZ)
+    assert not off_duty(weekdays, monday, 60, TZ)
+    assert off_duty(weekdays, monday.replace(hour=16, minute=30), 60, TZ), "kết thúc sau giờ làm"
+    assert off_duty(weekdays, monday + timedelta(days=1), 60, TZ), "ngày nghỉ"
+    assert off_duty(weekdays, monday + timedelta(days=5), 60, TZ), "thứ Bảy không làm"
+    assert validate_schedule(weekdays) is None
+    assert validate_schedule(WorkSchedule(work_days=[])) is not None
+    assert validate_schedule(WorkSchedule(start="18:00", end="08:00")) is not None
+    assert validate_schedule(WorkSchedule(days_off=["30/11/2026"])) is not None
+
+
+def test_off_duty_technician_ranks_last():
+    at = datetime(2026, 11, 7, 10, 0, tzinfo=TZ)
+    saturday_off = WorkSchedule(work_days=[1, 2, 3, 4, 5])
+    candidates = [Candidate(1, ["NGUON"], ["Bến Thành"], 5.0, saturday_off), Candidate(2, ["MANG"], ["Gia Định"], 4.0)]
+    ranked = rank_technicians(candidates, "NGUON", "Bến Thành", at, 60, [], CONFIG, TZ)
+    assert [r.candidate.tech_id for r in ranked] == [2, 1] and ranked[1].off_duty

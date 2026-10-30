@@ -67,18 +67,20 @@ const USERS = [
   { id: 'u-ktv4', name: 'Đỗ Thu Hà', email: 'ha.do@demo.vn', phone: '0909000014', roles: ['KTV'] },
   { id: 'u-dpv1', name: 'Trần Thị Lan', email: 'dpv@demo.vn', phone: '0909000021', roles: ['DPV'] },
   { id: 'u-qtv1', name: 'Hoàng Minh Quân', email: 'qtv@demo.vn', phone: '0909000031', roles: ['QTV', 'DPV'] },
-].map((u) => ({ ...u, password: '123456', locked: false, createdAt: '2026-09-01T02:00:00.000Z', consentAt: '2026-09-01T02:00:00.000Z' }));
+];
+
+const withAccount = (u) => ({ ...u, password: '123456', locked: false, createdAt: '2026-09-01T02:00:00.000Z', consentAt: '2026-09-01T02:00:00.000Z' });
 
 const TECHNICIANS = [
-  { id: 'k1', userId: 'u-ktv1', skills: ['CAI_HDH', 'PHAN_MEM', 'VIRUS', 'MAY_CHAM', 'PHAN_CUNG'], areas: ['Bến Thành', 'Sài Gòn', 'Tân Định', 'Cầu Ông Lãnh', 'Chợ Quán'], rating: 4.9, ratingCount: 0, active: true },
-  { id: 'k2', userId: 'u-ktv2', skills: ['NGUON', 'PHAN_CUNG', 'DU_LIEU', 'MAY_CHAM'], areas: ['Gia Định', 'Bình Thạnh', 'Bình Lợi Trung', 'Thạnh Mỹ Tây', 'Bình Quới'], rating: 4.7, ratingCount: 0, active: true },
-  { id: 'k3', userId: 'u-ktv3', skills: ['MANG', 'VIRUS', 'PHAN_MEM', 'CAI_HDH'], areas: ['Bàn Cờ', 'Xuân Hòa', 'Nhiêu Lộc', 'Chợ Lớn', 'An Đông'], rating: 4.8, ratingCount: 0, active: true },
-  { id: 'k4', userId: 'u-ktv4', skills: ['CAI_HDH', 'PHAN_MEM', 'KHAC'], areas: ['Chợ Lớn', 'An Đông', 'Chợ Quán'], rating: 4.5, ratingCount: 0, active: false },
+  { id: 'k1', userId: 'u-ktv1', skills: ['CAI_HDH', 'PHAN_MEM', 'VIRUS', 'MAY_CHAM', 'PHAN_CUNG'], areas: ['Bến Thành', 'Sài Gòn', 'Tân Định', 'Cầu Ông Lãnh', 'Chợ Quán'], rating: 4.9, ratingCount: 0, active: true, schedule: { workDays: [1, 2, 3, 4, 5, 6], start: '08:00', end: '20:00', daysOff: [] } },
+  { id: 'k2', userId: 'u-ktv2', skills: ['NGUON', 'PHAN_CUNG', 'DU_LIEU', 'MAY_CHAM'], areas: ['Gia Định', 'Bình Thạnh', 'Bình Lợi Trung', 'Thạnh Mỹ Tây', 'Bình Quới'], rating: 4.7, ratingCount: 0, active: true, schedule: { workDays: [1, 2, 3, 4, 5, 6, 7], start: '08:00', end: '20:00', daysOff: [] } },
+  { id: 'k3', userId: 'u-ktv3', skills: ['MANG', 'VIRUS', 'PHAN_MEM', 'CAI_HDH'], areas: ['Bàn Cờ', 'Xuân Hòa', 'Nhiêu Lộc', 'Chợ Lớn', 'An Đông'], rating: 4.8, ratingCount: 0, active: true, schedule: { workDays: [1, 2, 3, 4, 5], start: '08:00', end: '19:00', daysOff: [] } },
+  { id: 'k4', userId: 'u-ktv4', skills: ['CAI_HDH', 'PHAN_MEM', 'KHAC'], areas: ['Chợ Lớn', 'An Đông', 'Chợ Quán'], rating: 4.5, ratingCount: 0, active: false, schedule: { workDays: [1, 2, 3, 4, 5, 6], start: '08:00', end: '17:00', daysOff: [] } },
 ];
 
 const DEVICES = [
   { id: 'tb1', customerId: 'u-kh1', type: 'Laptop', brand: 'Dell', model: 'Inspiron 15 3520' },
-  { id: 'tb2', customerId: 'u-kh1', type: 'PC', brand: 'Lắp ráp', model: 'PC văn phòng i5' },
+  { id: 'tb2', customerId: 'u-kh1', type: 'PC', brand: 'Lắp ráp', model: 'PC văn phòng i5', note: 'Máy đặt ở phòng kế toán, tầng 2' },
   { id: 'tb3', customerId: 'u-kh2', type: 'Laptop', brand: 'HP', model: 'Pavilion 14' },
   { id: 'tb4', customerId: 'u-kh3', type: 'Laptop', brand: 'Asus', model: 'Vivobook 15' },
   { id: 'tb5', customerId: 'u-kh4', type: 'Laptop', brand: 'Lenovo', model: 'ThinkPad E14' },
@@ -365,7 +367,7 @@ export function buildSeed(nowDate = new Date()) {
   return {
     version: 1,
     config: structuredClone(DEFAULT_CONFIG),
-    users: structuredClone(USERS),
+    users: USERS.map(withAccount),
     technicians,
     categories: structuredClone(CATEGORIES),
     services: structuredClone(SERVICES),

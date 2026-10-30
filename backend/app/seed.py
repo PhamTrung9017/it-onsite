@@ -134,9 +134,16 @@ TECHNICIANS = {
     "k4": ("ktv4", ["CAI_HDH", "PHAN_MEM", "KHAC"], ["Chợ Lớn", "An Đông", "Chợ Quán"], 4.5, False),
 }
 
+SCHEDULES = {
+    "k1": {"workDays": [1, 2, 3, 4, 5, 6], "start": "08:00", "end": "20:00", "daysOff": []},
+    "k2": {"workDays": [1, 2, 3, 4, 5, 6, 7], "start": "08:00", "end": "20:00", "daysOff": []},
+    "k3": {"workDays": [1, 2, 3, 4, 5], "start": "08:00", "end": "19:00", "daysOff": []},
+    "k4": {"workDays": [1, 2, 3, 4, 5, 6], "start": "08:00", "end": "17:00", "daysOff": []},
+}
+
 DEVICES = {
     "tb1": ("kh1", "Laptop", "Dell", "Inspiron 15 3520"),
-    "tb2": ("kh1", "PC", "Lắp ráp", "PC văn phòng i5"),
+    "tb2": ("kh1", "PC", "Lắp ráp", "PC văn phòng i5", "Máy đặt ở phòng kế toán, tầng 2"),
     "tb3": ("kh2", "Laptop", "HP", "Pavilion 14"),
     "tb4": ("kh3", "Laptop", "Asus", "Vivobook 15"),
     "tb5": ("kh4", "Laptop", "Lenovo", "ThinkPad E14"),
@@ -218,11 +225,19 @@ class DemoBuilder:
             self.users[key] = user
         self.db.flush()
         for key, (user_key, skills, areas, rating, active) in TECHNICIANS.items():
-            tech = Technician(user_id=self.users[user_key].id, skills=skills, areas=areas, rating=rating, rating_count=0, active=active)
+            tech = Technician(
+                user_id=self.users[user_key].id,
+                skills=skills,
+                areas=areas,
+                rating=rating,
+                rating_count=0,
+                active=active,
+                schedule=SCHEDULES[key],
+            )
             self.db.add(tech)
             self.techs[key] = tech
-        for key, (owner, kind, brand, model) in DEVICES.items():
-            device = Device(customer_id=self.users[owner].id, type=kind, brand=brand, model=model)
+        for key, (owner, kind, brand, model, *note) in DEVICES.items():
+            device = Device(customer_id=self.users[owner].id, type=kind, brand=brand, model=model, note=note[0] if note else "")
             self.db.add(device)
             self.devices[key] = device
         self.db.flush()

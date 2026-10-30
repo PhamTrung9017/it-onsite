@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, not_found
-from app.domain.rules import Candidate, has_conflict, rank_technicians, response_deadline, warranty_status
+from app.domain.rules import Candidate, WorkSchedule, has_conflict, off_duty, rank_technicians, response_deadline, warranty_status
 from app.domain.status import CLOSED_STATUSES, Status
 from app.models import Assignment, Category, Payment, Service, Technician, Ticket, User, WarrantyClaim
 from app.services.common import (
@@ -25,7 +25,9 @@ from app.services.common import (
 from app.services.tickets import bookings, create_ticket_record
 
 BOARD_RECENT_DAYS = 2
-PAYMENT_STATUSES = ("CHO_XAC_NHAN", "DA_THU", "DA_XAC_NHAN", "DA_DOI_SOAT")
+PENDING_PAYMENT_STATUSES = ("CHO_XAC_NHAN", "DA_THU")
+DONE_PAYMENT_STATUSES = ("DA_XAC_NHAN", "DA_DOI_SOAT")
+RECENT_PAYMENTS = 60
 
 
 def sweep_overdue_assignments(db: Session) -> int:
@@ -85,8 +87,16 @@ def suggest(db: Session, user: User, ticket_id: str, appointment_at: datetime) -
     require_roles(user, "DPV")
     ticket = find_ticket(db, ticket_id)
     config = load_config(db)
-    techs = {t.id: t for t in db.scalars(select(Technician).where(Technician.active.is_(True)))}
-    candidates = [Candidate(t.id, list(t.skills), list(t.areas), float(t.rating)) for t in techs.values()]
+    techs = {
+        t.id: t
+        for t in db.scalars(
+            select(Technician).join(User, User.id == Technician.user_id).where(Technician.active.is_(True), User.locked.is_(False))
+        )
+        if "KTV" in t.user.roles
+    }
+    candidates = [
+        Candidate(t.id, list(t.skills), list(t.areas), float(t.rating), WorkSchedule.from_dict(t.schedule)) for t in techs.values()
+    ]
     ranked = rank_technicians(
         candidates,
         ticket.category_code,
@@ -99,7 +109,14 @@ def suggest(db: Session, user: User, ticket_id: str, appointment_at: datetime) -
         ticket.id,
     )
     return [
-        {"tech": techs[r.candidate.tech_id], "skill": r.skill, "area": r.area, "jobsToday": r.jobs_today, "conflict": r.conflict}
+        {
+            "tech": techs[r.candidate.tech_id],
+            "skill": r.skill,
+            "area": r.area,
+            "jobsToday": r.jobs_today,
+            "conflict": r.conflict,
+            "offDuty": r.off_duty,
+        }
         for r in ranked
     ]
 
@@ -111,18 +128,20 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
     if ticket.status != Status.DA_TIEP_NHAN:
         raise conflict("Chỉ phân công phiếu ở trạng thái Đã tiếp nhận.")
     tech = db.get(Technician, tech_id, with_for_update=True)
-    if tech is None or not tech.active:
+    if tech is None or not tech.active or tech.user.locked or "KTV" not in tech.user.roles:
         raise ApiError("Kỹ thuật viên không khả dụng.")
     now = utcnow()
     if appointment_at < now:
         raise ApiError("Giờ hẹn phải ở tương lai.")
     config = load_config(db)
+    if off_duty(WorkSchedule.from_dict(tech.schedule), appointment_at, ticket.estimated_minutes, get_settings().tz):
+        raise conflict("Giờ hẹn nằm ngoài lịch làm việc của kỹ thuật viên này.")
     if has_conflict(tech.id, appointment_at, ticket.estimated_minutes, bookings(db), config, ticket.id):
         raise conflict("Kỹ thuật viên bị trùng lịch ở khung giờ này (BR-04).")
     ticket.assignments.append(
         Assignment(tech_id=tech.id, appointment_at=appointment_at, assigned_at=now, deadline=response_deadline(now, config))
     )
-    transition(db, ticket, Status.DA_PHAN_CONG, user, f"Phân công {tech.user.name}")
+    transition(db, ticket, Status.DA_PHAN_CONG, user, f"Phân công {tech.user.name}", notified_separately=(tech.user_id,))
     notify(
         db,
         [tech.user_id],
@@ -134,16 +153,12 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
 
 
 def list_payments(db: Session, user: User) -> list[Ticket]:
+    """Mọi khoản đang chờ xử lý, kèm các khoản đã xong gần đây."""
     require_roles(user, "DPV", "QTV")
-    return list(
-        db.scalars(
-            select(Ticket)
-            .join(Payment, Payment.ticket_id == Ticket.id)
-            .where(Payment.status.in_(PAYMENT_STATUSES))
-            .order_by(Payment.paid_at.desc().nulls_last())
-            .limit(60)
-        )
-    )
+    base = select(Ticket).join(Payment, Payment.ticket_id == Ticket.id).order_by(Payment.paid_at.desc().nulls_last())
+    pending = db.scalars(base.where(Payment.status.in_(PENDING_PAYMENT_STATUSES))).all()
+    done = db.scalars(base.where(Payment.status.in_(DONE_PAYMENT_STATUSES)).limit(RECENT_PAYMENTS)).all()
+    return [*pending, *done]
 
 
 def confirm_transfer(db: Session, user: User, ticket_id: str) -> Ticket:

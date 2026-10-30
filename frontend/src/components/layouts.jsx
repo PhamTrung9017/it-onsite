@@ -5,7 +5,7 @@ import {
   RotateCcw, ShieldCheck, Tags, User, UserCog, Users, Wrench, LayoutGrid, Repeat,
 } from 'lucide-react';
 import { ROLE_HOME, ROLE_LABEL, useAuth, useNotifications, useToast } from '../context/AppContext.jsx';
-import { api } from '../services/api.js';
+import { api, usingMockApi } from '../services/api.js';
 import { initials } from '../lib/format.js';
 import { Loading } from './ui.jsx';
 
@@ -66,7 +66,7 @@ function UserMenu() {
             </>
           )}
           <div className="sep" />
-          <button type="button" className="mi" role="menuitem" onClick={reset}><RotateCcw aria-hidden />Khôi phục dữ liệu mẫu</button>
+          {usingMockApi && <button type="button" className="mi" role="menuitem" onClick={reset}><RotateCcw aria-hidden />Khôi phục dữ liệu mẫu</button>}
           <button type="button" className="mi" role="menuitem" onClick={async () => { await logout(); navigate('/'); }}><LogOut aria-hidden />Đăng xuất</button>
         </div>
       )}
