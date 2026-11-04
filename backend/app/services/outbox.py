@@ -19,13 +19,12 @@ MAX_ATTEMPTS = 4
 BATCH_SIZE = 20
 
 
-def send_telegram(chat_id: str, title: str, body: str) -> None:
+def send_telegram(chat_id: str, title: str, body: str, reply_markup: dict | None = None) -> None:
     settings = get_settings()
-    response = httpx.post(
-        f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
-        json={"chat_id": chat_id, "text": f"{title}\n{body}"},
-        timeout=10,
-    )
+    payload = {"chat_id": chat_id, "text": f"{title}\n{body}" if title else body}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    response = httpx.post(f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage", json=payload, timeout=10)
     response.raise_for_status()
 
 
@@ -49,7 +48,7 @@ def _deliver(message: OutboxMessage) -> bool:
     if message.channel == "telegram":
         if not settings.telegram_bot_token:
             return False
-        send_telegram(message.recipient, message.subject, message.body)
+        send_telegram(message.recipient, message.subject, message.body, message.reply_markup)
     elif message.channel == "email":
         if not settings.smtp_host:
             logger.info("Email chưa gửi vì chưa cấu hình SMTP – tới %s: %s\n%s", message.recipient, message.subject, message.body)

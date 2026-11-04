@@ -39,7 +39,7 @@ from app.models import (
     Warranty,
     WarrantyClaim,
 )
-from app.services import media
+from app.services import media, telegram
 from app.services.common import (
     add_history,
     admin_ids,
@@ -52,13 +52,13 @@ from app.services.common import (
     load_config,
     money,
     notify,
-    open_payment,
     require_roles,
     tech_user_id,
     touch,
     transition,
     utcnow,
 )
+from app.services.completion import open_payment
 from app.services.deposits import open_deposit, settle_on_cancel
 
 MAX_REQUEST_PHOTOS = 5
@@ -270,7 +270,10 @@ def cancel_ticket(db: Session, user: User, ticket_id: str, reason: str, charge_c
     forfeit = ticket.status != Status.MOI and (by_customer or charge_customer)
     fee = settle_on_cancel(ticket, forfeit)
     ticket.cancel = {"by": user.id, "byName": user.name, "reason": reason.strip(), "fee": fee, "at": utcnow().isoformat()}
+    had_technician = ticket.assignment is not None and ticket.status in (Status.DA_PHAN_CONG, Status.KTV_DA_NHAN)
     transition(db, ticket, Status.DA_HUY, user, reason.strip())
+    if had_technician:
+        telegram.post_group(db, f"Phiếu {ticket.id} đã hủy, kỹ thuật viên không cần đến nữa.")
     if ticket.deposit and ticket.deposit.status == DepositStatus.CHO_HOAN:
         notify(
             db, dispatcher_ids(db), "Cần hoàn phí giữ lịch", f"Phiếu {ticket.id} đã hủy, cần chuyển trả phí giữ lịch cho khách.", ticket.id

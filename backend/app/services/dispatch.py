@@ -10,10 +10,10 @@ from app.core.errors import ApiError, conflict, not_found
 from app.domain.rules import Candidate, WorkSchedule, has_conflict, off_duty, rank_technicians, response_deadline, warranty_status
 from app.domain.status import CLOSED_STATUSES, DepositStatus, Status
 from app.models import Assignment, Category, Payment, Service, Technician, Ticket, User, WarrantyClaim
+from app.services import telegram
 from app.services.common import (
     audit,
     check_version,
-    complete,
     dispatcher_ids,
     find_ticket,
     load_config,
@@ -22,6 +22,7 @@ from app.services.common import (
     transition,
     utcnow,
 )
+from app.services.completion import complete
 from app.services.deposits import sweep_unpaid
 from app.services.tickets import bookings, create_ticket_record
 
@@ -49,6 +50,7 @@ def sweep_overdue_assignments(db: Session) -> int:
         tech = db.get(Technician, assignment.tech_id)
         transition(db, ticket, Status.DA_TIEP_NHAN, None, f"{tech.user.name} quá hạn phản hồi, đã thu hồi phân công")
         notify(db, dispatcher_ids(db), "Phân công quá hạn", f"KTV chưa phản hồi phiếu {ticket.id}. Vui lòng phân công lại.", ticket.id)
+        telegram.post_group(db, f"{tech.user.name} quá hạn phản hồi phiếu {ticket.id}, đã thu hồi phân công. Cần phân công lại.")
     return len(overdue)
 
 
@@ -83,6 +85,7 @@ def receive(db: Session, user: User, ticket_id: str, category_code: str, urgency
     ticket.category_confirmed = True
     ticket.estimated_minutes = service.duration_min if service else 60
     transition(db, ticket, Status.DA_TIEP_NHAN, user, f"Loại sự cố: {category.name}")
+    telegram.post_group(db, f"Phiếu mới chờ phân công: {telegram.job_summary(db, ticket)}.")
     return ticket
 
 
@@ -150,9 +153,12 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
         db,
         [tech.user_id],
         "Việc mới được phân công",
-        f"Bạn được phân công phiếu {ticket.id}. Vui lòng phản hồi trong {config.tech_response_minutes} phút.",
+        f"Bạn được phân công phiếu {telegram.job_summary(db, ticket)}, địa chỉ {ticket.address}. "
+        f"Vui lòng nhận hoặc từ chối trong {config.tech_response_minutes} phút.",
         ticket.id,
+        buttons=telegram.assignment_buttons(ticket.id),
     )
+    telegram.post_group(db, f"Đã phân công {tech.user.name}: {telegram.job_summary(db, ticket)}. Chờ kỹ thuật viên phản hồi.")
     return ticket
 
 

@@ -49,7 +49,10 @@ def catalog(db: Db) -> dict:
             "areas": config.areas,
             "reviewWindowDays": config.review_window_days,
         },
-        "features": {"telegram": bool(settings.telegram_bot_token and settings.telegram_bot_username)},
+        "features": {
+            "telegram": bool(settings.telegram_bot_token and settings.telegram_bot_username),
+            "telegramBot": settings.telegram_bot_username if settings.telegram_bot_token else "",
+        },
     }
 
 

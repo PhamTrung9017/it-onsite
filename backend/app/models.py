@@ -366,6 +366,7 @@ class OutboxMessage(Base):
     attempts: Mapped[int] = mapped_column(SmallInteger, default=0)
     next_attempt_at: Mapped[datetime] = mapped_column(Timestamp)
     last_error: Mapped[str] = mapped_column(Text, default="")
+    reply_markup: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
 
 

@@ -55,6 +55,7 @@ export const DEFAULT_CONFIG = {
   areas: AREAS,
   bank: { name: 'Ngân hàng mẫu', bin: '970423', accountNumber: '0123456789', accountName: 'CAI WIN DAO' },
   payroll: { baseSalary: 5000000, commissionPercent: 30 },
+  telegramGroupChatId: '',
 };
 
 const USERS = [
