@@ -95,4 +95,4 @@ Chạy cùng tiến trình API (tắt bằng `BACKGROUND_JOBS=false`):
 
 - **Gemini API**: đặt `GEMINI_API_KEY`. Mô tả sự cố được lọc số điện thoại, email, mật khẩu, số nhà trước khi gửi (NFR-10); quá 10 giây thì bỏ qua (NFR-03); kết quả sai định dạng thì gửi lại một lần (UC05 luồng 3a). Không có khóa thì hệ thống phân loại theo từ khóa.
 - **Telegram**: đặt `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, rồi đăng ký webhook `https://<tên miền>/api/v1/telegram/webhook` với `secret_token` bằng `TELEGRAM_WEBHOOK_SECRET`. Người dùng bấm liên kết từ `POST /me/telegram-link` để gắn tài khoản.
-- **Email**: đặt `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
+- **Email**: đặt `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`. Khách có email nhận thư chào mừng khi đăng ký và biên nhận dịch vụ khi phiếu hoàn tất (`services/receipts.py`).
