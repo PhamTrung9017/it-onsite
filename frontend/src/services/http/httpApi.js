@@ -77,6 +77,7 @@ const put = (path, body) => call('PUT', path, body);
 const patch = (path, body) => call('PATCH', path, body);
 const del = (path) => call('DELETE', path);
 const t = (id) => `/tickets/${encodeURIComponent(id)}`;
+const periodQuery = ({ days, month }) => (month ? `month=${encodeURIComponent(month)}` : `days=${days}`);
 
 export const httpApi = {
   /* Xác thực */
@@ -156,5 +157,6 @@ export const httpApi = {
   saveUserRoles: (userId, body) => put(`/admin/users/${userId}/roles`, body),
   createInternalUser: (body) => post('/admin/users', body),
   saveConfig: (body) => put('/admin/config', body),
-  report: ({ days }) => get(`/admin/reports?days=${days}`),
+  report: (period) => get(`/admin/reports?${periodQuery(period)}`),
+  reportExport: (period) => get(`/admin/reports/export?${periodQuery(period)}`),
 };

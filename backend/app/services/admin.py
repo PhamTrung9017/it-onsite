@@ -251,6 +251,8 @@ def save_config(db: Session, admin: User, data: dict) -> BusinessConfig:
         or config.travel_buffer_minutes < 0
         or config.review_window_days < 1
         or not 0 <= config.ai_confidence_threshold <= 1
+        or config.base_salary < 0
+        or not 0 <= config.commission_percent <= 100
     ):
         raise ApiError("Các tham số phải là số hợp lệ.")
     if not re.match(r"^\d{2}:\d{2}$", config.service_start) or not re.match(r"^\d{2}:\d{2}$", config.service_end):

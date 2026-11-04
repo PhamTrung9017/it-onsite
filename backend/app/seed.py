@@ -62,6 +62,8 @@ DEFAULT_CONFIG = BusinessConfig(
     bank_bin="970423",
     bank_account_number="0123456789",
     bank_account_name="CAI WIN DAO",
+    base_salary=5000000,
+    commission_percent=30,
 )
 
 SERVICES = {
@@ -393,6 +395,7 @@ class DemoBuilder:
         device_of = {"kh1": "tb1", "kh2": "tb3", "kh3": "tb4", "kh4": "tb5", "kh5": "tb6"}
         techs = ["k1", "k2", "k3"]
         dispatcher = self.users["dpv1"].name
+        served = 0
         for day in range(30, 1, -1):
             for _ in range(rng.randint(1, 3)):
                 cust = rng.choice(customers)
@@ -433,6 +436,14 @@ class DemoBuilder:
                     items.append(self.item("part", rng.choice(["ssd512", "ram8"])))
                 if category == "MAY_CHAM" and rng.random() < 0.5:
                     items.append(self.item("service", "vesinh"))
+                served += 1
+                missed = {4: "TU_CHOI", 8: "QUA_HAN"}.get(served % 9)
+                if missed:
+                    other = techs[(techs.index(tech) + 1) % len(techs)]
+                    answered = created + (15 if missed == "TU_CHOI" else 27) * MIN
+                    self.assign(t, other, appointment, created + 12 * MIN, missed, answered)
+                    if missed == "TU_CHOI":
+                        t.assignments[-1].reject_reason = "Đang xử lý phiếu khác ở xa"
                 self.assign(t, tech, appointment, created + 20 * MIN, "NHAN", created + 28 * MIN)
                 t.check_in_at = appointment
                 if rejected:
@@ -449,6 +460,7 @@ class DemoBuilder:
                 )
                 amount = DEFAULT_CONFIG.survey_fee if rejected else sum(i.unit_price for i in items)
                 cash = rng.random() >= 0.55
+                reconciled = cash and day > 3
                 if not rejected:
                     self.photos(t, "before", "after")
                     t.acceptance = {"result": "DAT", "at": done.isoformat()}
@@ -456,18 +468,21 @@ class DemoBuilder:
                 t.payment = Payment(
                     amount=amount,
                     method="TIEN_MAT" if cash else "CHUYEN_KHOAN",
-                    status="DA_DOI_SOAT" if cash else "DA_XAC_NHAN",
+                    status=("DA_DOI_SOAT" if reconciled else "DA_THU") if cash else "DA_XAC_NHAN",
                     paid_at=completed,
                     confirmed_by=self.users[TECHNICIANS[tech][0]].id if cash else self.users["dpv1"].id,
                     confirmed_by_name=tech_name if cash else dispatcher,
                     confirmed_at=completed,
-                    reconciled_by=self.users["dpv1"].id if cash else None,
-                    reconciled_at=completed + DAY if cash else None,
+                    reconciled_by=self.users["dpv1"].id if reconciled else None,
+                    reconciled_at=completed + DAY if reconciled else None,
                 )
                 t.completed_at = completed
-                steps = [
-                    (Status.MOI, created, customer_name),
-                    (Status.DA_TIEP_NHAN, created + 10 * MIN, dispatcher),
+                steps = [(Status.MOI, created, customer_name), (Status.DA_TIEP_NHAN, created + 10 * MIN, dispatcher)]
+                if missed:
+                    other_name = self.users[TECHNICIANS[other][0]].name
+                    note = f"{other_name} từ chối" if missed == "TU_CHOI" else f"{other_name} quá hạn phản hồi, đã thu hồi phân công"
+                    steps += [(Status.DA_PHAN_CONG, created + 12 * MIN, dispatcher), (Status.DA_TIEP_NHAN, answered, "Hệ thống", note)]
+                steps += [
                     (Status.DA_PHAN_CONG, created + 20 * MIN, dispatcher),
                     (Status.KTV_DA_NHAN, created + 28 * MIN, tech_name),
                     (Status.DANG_KHAO_SAT, appointment, tech_name),

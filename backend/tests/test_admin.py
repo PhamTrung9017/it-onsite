@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.db import SessionLocal
 from app.models import OutboxMessage
 from tests.conftest import tomorrow_at
@@ -13,6 +16,40 @@ def test_overview_and_reports(qtv):
     assert report["done"] > 0 and len(report["byDay"]) == 30
     assert sum(s["count"] for s in report["byStatus"]) == report["total"]
     assert qtv.get("/admin/reports?days=5").status_code == 400
+
+
+def test_report_export_matches_summary(qtv, khach):
+    report = qtv.ok("get", "/admin/reports?days=30")
+    data = qtv.ok("get", "/admin/reports/export?days=30")
+    start, end = report["period"]["from"], report["period"]["to"]
+    created = [t for t in data["tickets"] if start <= t["createdAt"] <= end]
+    completed = [t for t in data["tickets"] if t["status"] == "HOAN_TAT" and t["completedAt"] and start <= t["completedAt"] <= end]
+    assert len(created) == report["total"]
+    assert len(completed) == report["done"] > 0
+    assert sum(t["amount"] for t in completed) == report["revenue"]
+    for t in completed:
+        parts_of_amount = t["serviceAmount"] + t["partsAmount"] + t["surveyFee"] + t["lateFee"]
+        assert parts_of_amount == t["amount"], t["id"]
+    assert data["payroll"] == {"baseSalary": 5000000, "commissionPercent": 30}
+    assert {t["techId"] for t in completed} <= {k["id"] for k in data["technicians"]}
+    assert khach.get("/admin/reports/export?days=30").status_code == 403
+
+
+def test_report_by_month(qtv):
+    this_month = datetime.now(get_settings().tz).strftime("%Y-%m")
+    report = qtv.ok("get", f"/admin/reports?month={this_month}")
+    assert report["period"]["kind"] == "month" and report["byDay"][0]["date"].startswith(f"{this_month}-01")
+    assert qtv.ok("get", f"/admin/reports/export?month={this_month}")["period"]["kind"] == "month"
+    for bad in ("2026-13", "2999-01", "10-2026"):
+        assert qtv.get(f"/admin/reports?month={bad}").status_code == 400
+    assert qtv.get("/admin/reports").status_code == 400
+
+
+def test_payroll_config_validation(qtv):
+    config = qtv.ok("get", "/admin/overview")["config"]
+    assert qtv.put("/admin/config", {**config, "payroll": {"baseSalary": 6000000, "commissionPercent": 101}}).status_code == 400
+    saved = qtv.ok("put", "/admin/config", {**config, "payroll": {"baseSalary": 6000000, "commissionPercent": 25.5}})
+    assert saved["payroll"] == {"baseSalary": 6000000, "commissionPercent": 25.5}
 
 
 def test_price_change_does_not_affect_existing_quote_br13(qtv, khach):

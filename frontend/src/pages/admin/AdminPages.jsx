@@ -246,7 +246,7 @@ export function ConfigPage() {
   const { data, loading, error, reload } = useAdmin();
   const { busy, run } = useAction();
   const [cfg, setCfg] = useState(null);
-  useEffect(() => { if (data) setCfg(structuredClone(data.config)); }, [data]);
+  useEffect(() => { if (data) setCfg({ payroll: { baseSalary: 0, commissionPercent: 0 }, ...structuredClone(data.config) }); }, [data]);
   if (loading || !cfg) return error ? <ErrorState error={error} onRetry={reload} /> : <Loading />;
   const num = (k, label, hint, step = 1) => (
     <Field label={label} htmlFor={k} hint={hint}><input id={k} type="number" min="0" step={step} className="input" value={cfg[k]} onChange={(e) => setCfg({ ...cfg, [k]: e.target.value })} /></Field>
@@ -262,6 +262,16 @@ export function ConfigPage() {
             {num('techResponseMinutes', 'Thời hạn KTV phản hồi (phút)', 'Quá hạn tự thu hồi phân công (BR-06)')}
             {num('travelBufferMinutes', 'Thời gian đệm di chuyển (phút)', 'Dùng khi kiểm tra trùng lịch (BR-04)')}
             {num('reviewWindowDays', 'Thời hạn đánh giá (ngày)', 'BR-10')}
+          </div>
+        </Card>
+        <Card title="Lương kỹ thuật viên">
+          <div className="grid-2">
+            <Field label="Lương cứng (đồng/tháng)" htmlFor="ps" hint="Đã gồm hỗ trợ đi lại cho phiếu bảo hành">
+              <input id="ps" type="number" min="0" step="100000" className="input" value={cfg.payroll.baseSalary} onChange={(e) => setCfg({ ...cfg, payroll: { ...cfg.payroll, baseSalary: e.target.value } })} />
+            </Field>
+            <Field label="Hoa hồng (%)" htmlFor="pc" hint="Trên tiền công dịch vụ và phí khảo sát của phiếu hoàn tất, không tính linh kiện">
+              <input id="pc" type="number" min="0" max="100" step="0.5" className="input" value={cfg.payroll.commissionPercent} onChange={(e) => setCfg({ ...cfg, payroll: { ...cfg.payroll, commissionPercent: e.target.value } })} />
+            </Field>
           </div>
         </Card>
         <Card title="Giờ phục vụ và khu vực">
