@@ -1,15 +1,20 @@
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_SECRET = "khoa-chi-dung-khi-phat-trien-tren-may-ca-nhan"
+MIN_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    app_env: str = "development"
     database_url: str = "postgresql+psycopg://itonsite:itonsite@localhost:5432/itonsite"
-    jwt_secret: str = "khoa-chi-dung-khi-phat-trien-tren-may-ca-nhan"
-    credential_key: str = "khoa-chi-dung-khi-phat-trien-tren-may-ca-nhan"
+    jwt_secret: str = DEV_SECRET
+    credential_key: str = DEV_SECRET
     access_token_minutes: int = 15
     refresh_token_days: int = 7
     login_max_failures: int = 5
@@ -39,6 +44,16 @@ class Settings(BaseSettings):
     background_jobs: bool = True
     sweep_interval_seconds: int = 30
     outbox_interval_seconds: int = 15
+
+    @model_validator(mode="after")
+    def check_production_secrets(self) -> "Settings":
+        """Bản triển khai thật không được chạy với khóa mặc định hoặc khóa quá ngắn."""
+        if self.app_env == "production":
+            for name in ("jwt_secret", "credential_key"):
+                value = getattr(self, name)
+                if value == DEV_SECRET or len(value) < MIN_SECRET_LENGTH:
+                    raise ValueError(f"{name.upper()} phải là chuỗi ngẫu nhiên ít nhất {MIN_SECRET_LENGTH} ký tự khi APP_ENV=production.")
+        return self
 
     @property
     def tz(self) -> ZoneInfo:

@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header
 
-from app.api.deps import CurrentUser, Db
+from app.api.deps import CurrentUser, Db, Page
 from app.core.config import get_settings
 from app.core.errors import forbidden
 from app.schemas import DeviceBody, MarkReadBody, ProfileBody, ReasonBody
@@ -59,8 +59,15 @@ def telegram_link(user: CurrentUser, db: Db) -> dict:
     return link
 
 
+@router.get("/notifications/unread-count")
+def unread_count(user: CurrentUser, db: Db) -> dict:
+    return {"count": account.unread_count(db, user)}
+
+
 @router.get("/notifications")
-def list_notifications(user: CurrentUser, db: Db) -> list[dict]:
+def list_notifications(user: CurrentUser, db: Db, page: Page) -> list[dict]:
+    items, total = account.list_notifications(db, user, page.limit, page.offset)
+    page.total(total)
     return [
         {
             "id": n.id,
@@ -71,7 +78,7 @@ def list_notifications(user: CurrentUser, db: Db) -> list[dict]:
             "read": n.read,
             "createdAt": iso(n.created_at),
         }
-        for n in account.list_notifications(db, user)
+        for n in items
     ]
 
 

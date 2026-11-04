@@ -73,6 +73,16 @@ export function PageHead({ title, sub, crumbs, actions }) {
   );
 }
 
+/** Nút "Xem thêm" cho danh sách có phân trang. */
+export function LoadMore({ shown, total, loading, onClick }) {
+  if (shown >= total) return null;
+  return (
+    <div className="center" style={{ padding: 12 }}>
+      <Button variant="outline" size="sm" loading={loading} onClick={onClick}>Xem thêm ({shown}/{total})</Button>
+    </div>
+  );
+}
+
 export function Empty({ icon: Icon = Inbox, title, children, action }) {
   return (
     <div className="empty">

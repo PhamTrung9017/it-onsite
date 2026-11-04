@@ -52,6 +52,7 @@ from app.services.common import (
     load_config,
     money,
     notify,
+    page_of,
     require_roles,
     tech_user_id,
     touch,
@@ -215,8 +216,21 @@ def create_ticket(db: Session, user: User, data) -> Ticket:
     return ticket
 
 
-def list_my_tickets(db: Session, user: User) -> list[Ticket]:
-    return list(db.scalars(select(Ticket).where(Ticket.customer_id == user.id).order_by(Ticket.created_at.desc())))
+TICKET_GROUPS = {
+    "open": lambda: Ticket.status.not_in((Status.HOAN_TAT, Status.DA_HUY)),
+    "done": lambda: Ticket.status == Status.HOAN_TAT,
+    "cancelled": lambda: Ticket.status == Status.DA_HUY,
+}
+
+
+def list_my_tickets(db: Session, user: User, group: str | None, limit: int, offset: int) -> tuple[list[Ticket], int]:
+    """Phiếu của khách, mới nhất trước; `group` lọc phiếu đang xử lý, hoàn tất hoặc đã hủy."""
+    query = select(Ticket).where(Ticket.customer_id == user.id)
+    if group:
+        if group not in TICKET_GROUPS:
+            raise ApiError("Nhóm phiếu không hợp lệ.")
+        query = query.where(TICKET_GROUPS[group]())
+    return page_of(db, query.order_by(Ticket.created_at.desc()), limit, offset)
 
 
 def get_visible_ticket(db: Session, user: User, ticket_id: str) -> Ticket:

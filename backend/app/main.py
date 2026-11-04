@@ -28,11 +28,30 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="IT OnSite API", version="1.0.0", lifespan=lifespan)
 
+API_PREFIX = "/api/v1"
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """NFR-09: chặn đoán kiểu nội dung, nhúng khung; dữ liệu API không lưu vào bộ nhớ đệm."""
+    response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
+    if request.url.path.startswith(API_PREFIX):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 
@@ -51,8 +70,6 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
 def jsonable_errors(exc: RequestValidationError) -> list[dict]:
     return [{"field": ".".join(str(p) for p in err.get("loc", [])), "message": err.get("msg", "")} for err in exc.errors()]
 
-
-API_PREFIX = "/api/v1"
 
 for module in (auth, account, catalog, tickets, technician, dispatch, admin):
     app.include_router(module.router, prefix=API_PREFIX)

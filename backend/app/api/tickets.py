@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, Db, presenter
+from app.api.deps import CurrentUser, Db, Page, presenter
 from app.models import Category, Service
 from app.schemas import (
     AcceptanceBody,
@@ -75,9 +75,12 @@ def create_ticket(body: CreateTicketBody, user: CurrentUser, db: Db) -> dict:
 
 
 @router.get("/tickets/mine")
-def my_tickets(user: CurrentUser, db: Db) -> list[dict]:
+def my_tickets(user: CurrentUser, db: Db, page: Page, group: str | None = None) -> list[dict]:
+    """Phiếu của tôi; `group` là open, done hoặc cancelled."""
+    items, total = tickets.list_my_tickets(db, user, group, page.limit, page.offset)
+    page.total(total)
     p = presenter(db, user)
-    return [p.ticket(t) for t in tickets.list_my_tickets(db, user)]
+    return [p.ticket(t) for t in items]
 
 
 @router.get("/tickets/{ticket_id}")

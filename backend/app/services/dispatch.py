@@ -18,6 +18,7 @@ from app.services.common import (
     find_ticket,
     load_config,
     notify,
+    page_of,
     require_roles,
     transition,
     utcnow,
@@ -198,9 +199,11 @@ def reconcile_cash(db: Session, user: User, ticket_id: str) -> Ticket:
     return ticket
 
 
-def list_claims(db: Session, user: User) -> list[WarrantyClaim]:
+def list_claims(db: Session, user: User, limit: int, offset: int) -> tuple[list[WarrantyClaim], int]:
+    """Yêu cầu chờ xử lý trước, sau đó các yêu cầu đã xử lý, mới nhất trước."""
     require_roles(user, "DPV", "QTV")
-    return list(db.scalars(select(WarrantyClaim).order_by(WarrantyClaim.created_at.desc())))
+    query = select(WarrantyClaim).order_by((WarrantyClaim.status != "CHO_XU_LY"), WarrantyClaim.created_at.desc())
+    return page_of(db, query, limit, offset)
 
 
 def decide_claim(db: Session, user: User, claim_id: int, valid: bool, reason: str) -> WarrantyClaim:

@@ -30,7 +30,7 @@ function clearTokens() {
   }
 }
 
-async function send(method, path, body, token) {
+async function send(method, path, body, token, paged = false) {
   const headers = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -43,6 +43,7 @@ async function send(method, path, body, token) {
   if (response.status === 204) return undefined;
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new ApiError(data?.detail || 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.', response.status);
+  if (paged) return { items: data, total: Number(response.headers.get('X-Total-Count') ?? data.length) };
   return data;
 }
 
@@ -59,12 +60,12 @@ async function refreshTokens() {
 }
 
 /** Gửi kèm access token; hết hạn thì làm mới một lần rồi gửi lại, không làm mới được thì báo hết phiên. */
-async function call(method, path, body) {
+async function call(method, path, body, paged = false) {
   try {
-    return await send(method, path, body, readTokens()?.accessToken);
+    return await send(method, path, body, readTokens()?.accessToken, paged);
   } catch (error) {
     if (error.status !== 401 || !readTokens()) throw error;
-    if (await refreshTokens()) return send(method, path, body, readTokens()?.accessToken);
+    if (await refreshTokens()) return send(method, path, body, readTokens()?.accessToken, paged);
     clearTokens();
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     throw error;
@@ -77,8 +78,10 @@ const put = (path, body) => call('PUT', path, body);
 const patch = (path, body) => call('PATCH', path, body);
 const del = (path) => call('DELETE', path);
 const t = (id) => `/tickets/${encodeURIComponent(id)}`;
-/** Kỳ báo cáo (`days`, `month` hoặc `from`, `to`) và bộ lọc (`techId`, `category`, `ward`) thành chuỗi truy vấn. */
-const periodQuery = (params) => new URLSearchParams(
+/** Danh sách có phân trang: trả về { items, total }. */
+const page = (path, params) => call('GET', `${path}?${query(params)}`, undefined, true);
+/** Tham số (kỳ báo cáo, bộ lọc, phân trang `limit`, `offset`) thành chuỗi truy vấn, bỏ giá trị rỗng. */
+const query = (params = {}) => new URLSearchParams(
   Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)]),
 ).toString();
 
@@ -109,7 +112,7 @@ export const httpApi = {
   /* Khách hàng */
   classifyIssue: (body) => post('/classify', body),
   createTicket: (body) => post('/tickets', body),
-  listMyTickets: () => get('/tickets/mine'),
+  listMyTickets: (params) => page('/tickets/mine', params),
   getTicket: (id) => get(t(id)),
   cancelTicket: (id, body) => post(`${t(id)}/cancel`, body),
   rescheduleTicket: (id, body) => post(`${t(id)}/reschedule`, body),
@@ -125,7 +128,8 @@ export const httpApi = {
   createWarrantyClaim: (body) => post('/warranty-claims', body),
 
   /* Thông báo */
-  listNotifications: () => get('/notifications'),
+  listNotifications: (params) => page('/notifications', params),
+  unreadNotifications: async () => (await get('/notifications/unread-count')).count,
   markNotificationsRead: (ids) => post('/notifications/read', { ids: ids || null }),
 
   /* Kỹ thuật viên */
@@ -154,17 +158,19 @@ export const httpApi = {
   listDeposits: () => get('/deposits'),
   confirmDeposit: (id) => post(`${t(id)}/deposit/confirm`),
   refundDeposit: (id, body) => post(`${t(id)}/deposit/refund`, body),
-  listWarrantyClaims: () => get('/warranty-claims'),
+  listWarrantyClaims: (params) => page('/warranty-claims', params),
   decideWarrantyClaim: (id, body) => post(`/warranty-claims/${id}/decision`, body),
 
   /* Quản trị */
   adminData: () => get('/admin/overview'),
+  listUsers: (params) => page('/admin/users', params),
+  listAudit: (params) => page('/admin/audit', params),
   saveService: (body) => put('/admin/services', body),
   savePart: (body) => put('/admin/parts', body),
   saveTechnician: (body) => put('/admin/technicians', body),
   saveUserRoles: (userId, body) => put(`/admin/users/${userId}/roles`, body),
   createInternalUser: (body) => post('/admin/users', body),
   saveConfig: (body) => put('/admin/config', body),
-  report: (period) => get(`/admin/reports?${periodQuery(period)}`),
-  reportExport: (period) => get(`/admin/reports/export?${periodQuery(period)}`),
+  report: (period) => get(`/admin/reports?${query(period)}`),
+  reportExport: (period) => get(`/admin/reports/export?${query(period)}`),
 };

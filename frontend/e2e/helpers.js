@@ -57,7 +57,7 @@ export async function getTicket(page, id) {
 
 /** Phiếu của khách đang đăng nhập. */
 export async function myTickets(page) {
-  if (BACKEND) return request(page, '/tickets/mine');
+  if (BACKEND) return request(page, '/tickets/mine?limit=100');
   const session = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), MOCK_SESSION_KEY);
   return (await readMock(page)).tickets.filter((t) => t.customerId === session.userId);
 }
@@ -100,7 +100,7 @@ export async function warrantyTicketOf(page, ticketId) {
 
 /** Thông báo trên web của một tài khoản, mới nhất trước. */
 export async function notificationsOf(page, email) {
-  if (BACKEND) return request(page, '/notifications', email);
+  if (BACKEND) return request(page, '/notifications?limit=100', email);
   const db = await readMock(page);
   const user = db.users.find((u) => u.email === email);
   return db.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));

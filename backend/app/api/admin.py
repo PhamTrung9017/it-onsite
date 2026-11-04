@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CurrentUser, Db
+from app.api.deps import CurrentUser, Db, Page
 from app.schemas import InternalUserBody, PartBody, RolesBody, ServiceBody, TechnicianBody
 from app.services import admin, reports
 from app.services.present import category_json, iso, tech_json, user_json
@@ -24,14 +24,28 @@ def overview(user: CurrentUser, db: Db) -> dict:
         "services": [service_json(s) for s in data["services"]],
         "parts": [part_json(p) for p in data["parts"]],
         "categories": [category_json(c) for c in data["categories"]],
-        "users": [user_json(u) for u in data["users"]],
         "config": data["config"].to_dict(),
         "allAreas": data["allAreas"],
-        "audit": [
-            {"at": iso(a.at), "userId": a.user_id, "userName": a.user_name, "action": a.action, "target": a.target, "detail": a.detail}
-            for a in data["audit"]
-        ],
     }
+
+
+@router.get("/users")
+def users(user: CurrentUser, db: Db, page: Page, q: str = "", role: str | None = None) -> list[dict]:
+    """Tài khoản, tìm theo tên, email, số điện thoại (`q`) và lọc theo vai trò (`role`)."""
+    items, total = admin.list_users(db, user, q, role or None, page.limit, page.offset)
+    page.total(total)
+    return [user_json(u) for u in items]
+
+
+@router.get("/audit")
+def audit_log(user: CurrentUser, db: Db, page: Page) -> list[dict]:
+    """Nhật ký thao tác (NFR-08), mới nhất trước."""
+    items, total = admin.list_audit(db, user, page.limit, page.offset)
+    page.total(total)
+    return [
+        {"at": iso(a.at), "userId": a.user_id, "userName": a.user_name, "action": a.action, "target": a.target, "detail": a.detail}
+        for a in items
+    ]
 
 
 @router.put("/services")

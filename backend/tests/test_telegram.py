@@ -59,7 +59,7 @@ def test_connect_group_only_by_linked_admin(bot, ktv, qtv):
     assert bot.calls[-1][1]["text"].startswith("Đã kết nối nhóm")
     overview = qtv.ok("get", "/admin/overview")
     assert overview["config"]["telegramGroupChatId"] == GROUP_CHAT
-    assert any(a["action"] == "KET_NOI_NHOM_TELEGRAM" for a in overview["audit"])
+    assert any(a["action"] == "KET_NOI_NHOM_TELEGRAM" for a in qtv.ok("get", "/admin/audit"))
 
 
 def test_assignment_buttons_and_group_updates(bot, client, khach, dpv, qtv):

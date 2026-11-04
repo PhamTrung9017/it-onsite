@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Query, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,25 @@ def current_user(db: Db, credentials: Annotated[HTTPAuthorizationCredentials | N
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
+
+
+@dataclass
+class Paging:
+    """Phân trang danh sách dài: `limit` bản ghi từ vị trí `offset`; tổng số bản ghi trả trong header X-Total-Count."""
+
+    limit: int
+    offset: int
+    response: Response
+
+    def total(self, count: int) -> None:
+        self.response.headers["X-Total-Count"] = str(count)
+
+
+def paging(response: Response, limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)) -> Paging:
+    return Paging(limit, offset, response)
+
+
+Page = Annotated[Paging, Depends(paging)]
 
 
 def presenter(db: Session, user: User | None) -> Presenter:

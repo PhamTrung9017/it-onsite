@@ -5,9 +5,9 @@ import { formatDateTime, money, relativeDay, formatTime, timeAgo } from '../lib/
 import { quoteTotal } from '../lib/rules.js';
 import { oldWardText } from '../lib/wards.js';
 import { URGENCY_LABEL } from '../lib/classifier.js';
-import { Badge, Button, Card, DeviceIcon, Empty, ErrorState, Loading, Money, PageHead, StatusBadge } from './ui.jsx';
+import { Badge, Button, Card, DeviceIcon, Empty, ErrorState, LoadMore, Loading, Money, PageHead, StatusBadge } from './ui.jsx';
 import { api } from '../services/api.js';
-import { useAction, useLoad } from '../hooks/useApi.js';
+import { useAction, usePaged } from '../hooks/useApi.js';
 import { useNotifications } from '../context/AppContext.jsx';
 import { TelegramCard } from './TelegramCard.jsx';
 
@@ -149,12 +149,12 @@ export function AddressLine({ ticket }) {
 
 /** Màn hình thông báo dùng chung cho mọi vai trò. */
 export function NotificationsPage({ ticketLink, telegramText }) {
-  const { data, loading, error, reload, setData } = useLoad(() => api.listNotifications(), []);
-  const { refresh } = useNotifications();
+  const { items: data, setItems, total, loading, more, error, reload, loadMore } = usePaged((paging) => api.listNotifications(paging), []);
+  const { unread, refresh } = useNotifications();
   const { busy, run } = useAction();
   async function readAll() {
     await run('all', () => api.markNotificationsRead());
-    setData((xs) => xs.map((n) => ({ ...n, read: true })));
+    setItems((xs) => xs.map((n) => ({ ...n, read: true })));
     refresh();
   }
   async function open(n) {
@@ -162,7 +162,6 @@ export function NotificationsPage({ ticketLink, telegramText }) {
   }
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
-  const unread = data.filter((n) => !n.read).length;
   return (
     <>
       <PageHead title="Thông báo" sub={unread ? `${unread} thông báo chưa đọc` : 'Bạn đã đọc hết thông báo'}
@@ -184,6 +183,7 @@ export function NotificationsPage({ ticketLink, telegramText }) {
             ? <Link key={n.id} to={ticketLink(n.ticketId)} className="list-item" onClick={() => open(n)}>{content}</Link>
             : <div key={n.id} className="list-item" onClick={() => open(n)} role="presentation">{content}</div>;
         })}
+        <LoadMore shown={data.length} total={total} loading={more} onClick={loadMore} />
       </Card>
     </>
   );
