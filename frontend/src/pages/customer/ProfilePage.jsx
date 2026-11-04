@@ -5,6 +5,7 @@ import { useAction, useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
 import { Alert, Button, Card, Empty, ErrorState, Field, Loading, Modal, PageHead } from '../../components/ui.jsx';
 import { TelegramCard } from '../../components/TelegramCard.jsx';
+import { wardLabel } from '../../lib/wards.js';
 
 const ICON = { Laptop, PC: Monitor, 'Thiết bị khác': Printer };
 
@@ -53,7 +54,7 @@ export default function ProfilePage() {
               <Field label="Email (không bắt buộc)" htmlFor="pe" hint="Nhận thông báo, biên nhận và đặt lại mật khẩu qua email"><input id="pe" type="email" className="input" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
               <div className="grid-2">
                 <Field label="Số nhà, tên đường" htmlFor="pa"><input id="pa" className="input" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
-                <Field label="Phường" htmlFor="pw"><select id="pw" className="select" value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })}><option value="">Chọn phường</option>{data.areas.map((a) => <option key={a}>{a}</option>)}</select></Field>
+                <Field label="Phường" htmlFor="pw"><select id="pw" className="select" value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })}><option value="">Chọn phường</option>{data.areas.map((a) => <option key={a} value={a}>{wardLabel(a)}</option>)}</select></Field>
               </div>
             </div>
           </Card>

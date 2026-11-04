@@ -8,6 +8,7 @@ import { AiResult, TicketTimeline } from '../../components/ticket.jsx';
 import { BUSY_STATUSES, CANCELLABLE, DEPOSIT_STATUS_LABEL, DEPOSIT_STATUS_TONE, STATUS } from '../../lib/ticketStatus.js';
 import { URGENCY_LABEL } from '../../lib/classifier.js';
 import { combineDateTime, formatDateTime, formatTime, money, relativeDay, timeAgo, timeSlots, toDateInput } from '../../lib/format.js';
+import { oldWardText } from '../../lib/wards.js';
 
 const COLUMNS = [
   { key: 'new', title: 'Phiếu mới', match: (t) => t.status === STATUS.MOI },
@@ -136,7 +137,7 @@ export default function BoardPage() {
                   <dl className="kv">
                     <dt>Khách hàng</dt><dd>{sel.customer?.name} · {sel.customer?.phone}</dd>
                     <dt>Thiết bị</dt><dd>{sel.device?.type} · {sel.device?.brand} {sel.device?.model}{sel.device?.note && <div className="tiny muted">{sel.device.note}</div>}</dd>
-                    <dt>Địa chỉ</dt><dd className="row-sm"><MapPin size={14} aria-hidden />{sel.address}, phường {sel.ward}</dd>
+                    <dt>Địa chỉ</dt><dd><span className="row-sm"><MapPin size={14} aria-hidden />{sel.address}, phường {sel.ward}</span>{oldWardText(sel.ward) && <span className="tiny muted">Địa chỉ cũ: {oldWardText(sel.ward)}</span>}</dd>
                     <dt>Khách muốn</dt><dd>{formatDateTime(sel.slotStart)}</dd>
                     <dt>Tạo lúc</dt><dd>{formatDateTime(sel.createdAt)} ({timeAgo(sel.createdAt)})</dd>
                     <dt>Phí giữ lịch</dt><dd>{sel.deposit

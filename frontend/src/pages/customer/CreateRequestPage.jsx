@@ -8,6 +8,7 @@ import { Alert, Badge, Button, Card, ErrorState, Field, Loading, Money, PageHead
 import { combineDateTime, money, timeSlots, toDateInput } from '../../lib/format.js';
 import { validateSlot } from '../../lib/rules.js';
 import { URGENCY_LABEL } from '../../lib/classifier.js';
+import { oldWardText, wardLabel } from '../../lib/wards.js';
 
 const TYPES = [
   { value: 'Laptop', icon: Laptop },
@@ -243,10 +244,10 @@ export default function CreateRequestPage() {
             <div className="stack">
               <div className="grid-2">
                 <Field label="Số nhà, tên đường" htmlFor="addr" error={errors.address}><input id="addr" className="input" aria-invalid={Boolean(errors.address)} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Ví dụ: 120 Nguyễn Trãi" /></Field>
-                <Field label="Phường" htmlFor="ward" error={errors.ward}>
+                <Field label="Phường" htmlFor="ward" error={errors.ward} hint={oldWardText(ward) ? `Gồm địa bàn cũ: ${oldWardText(ward)}` : 'Theo tên phường mới từ 01/07/2025'}>
                   <select id="ward" className="select" value={ward} onChange={(e) => setWard(e.target.value)}>
                     <option value="">Chọn phường</option>
-                    {data.config.areas.map((a) => <option key={a} value={a}>{a}</option>)}
+                    {data.config.areas.map((a) => <option key={a} value={a}>{wardLabel(a)}</option>)}
                   </select>
                 </Field>
               </div>
