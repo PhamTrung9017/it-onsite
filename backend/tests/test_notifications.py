@@ -2,9 +2,10 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.db import SessionLocal
-from app.models import OutboxMessage, User
+from app.models import OutboxMessage, Ticket, User
 from app.services import outbox
-from app.services.common import notify
+from app.services.common import money, notify
+from app.services.receipts import receipt_body
 
 
 def test_telegram_link_and_webhook(client, khach, monkeypatch):
@@ -62,3 +63,27 @@ def test_outbox_sends_successfully(monkeypatch):
         outbox.process_outbox(db)
         status = db.scalar(select(OutboxMessage.status).where(OutboxMessage.recipient == "777"))
     assert status == "DA_GUI" and sent == [("777", "Việc mới")]
+
+
+def test_receipt_email_on_completion_uc06(client, khach, dpv, monkeypatch):
+    monkeypatch.setattr(get_settings(), "smtp_host", "smtp.example.com")
+    ticket = next(t for t in khach.ok("get", "/tickets/mine") if t["status"] == "CHO_DUYET_BAO_GIA")
+    quote = ticket["quotes"][-1]
+    khach.ok("post", f"/tickets/{ticket['id']}/quotes/{quote['id']}/decision", {"decision": "reject", "reason": "Để sau"})
+    with SessionLocal() as db:
+        mails = db.scalars(select(OutboxMessage).where(OutboxMessage.recipient == "khach@demo.vn", OutboxMessage.channel == "email")).all()
+    assert [m.subject for m in mails] == [f"[IT OnSite] Biên nhận dịch vụ phiếu {ticket['id']}"], "biên nhận thay cho email báo hoàn tất"
+    body = mails[0].body
+    assert "Phí khảo sát (khách từ chối báo giá): 50.000đ" in body
+    assert "Phí giữ lịch đã trả trước: −50.000đ" in body and "Thanh toán khi hoàn tất: 0đ" in body
+    assert f"/khach/phieu/{ticket['id']}/bien-nhan" in body
+
+
+def test_receipt_lists_items_with_warranty(client):
+    with SessionLocal() as db:
+        done = db.scalars(select(Ticket).where(Ticket.status == "HOAN_TAT", Ticket.is_warranty.is_(False))).all()
+        ticket = next(t for t in done if any(i.warranty_days for q in t.quotes for i in q.items if i.selected))
+        body = receipt_body(ticket, "Nguyễn Văn An")
+    assert "Kỹ thuật viên: Nguyễn Văn An" in body and ", đến " in body
+    total = sum(i.unit_price * i.qty for q in ticket.quotes for i in q.items if i.selected)
+    assert f"Tổng tiền dịch vụ: {money(total)}" in body

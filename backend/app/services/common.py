@@ -74,8 +74,8 @@ def tech_of_user(db: Session, user: User) -> Technician | None:
     return db.scalar(select(Technician).where(Technician.user_id == user.id))
 
 
-def notify(db: Session, user_ids: list[int | None], title: str, body: str, ticket_id: str | None = None) -> None:
-    """Thông báo trên web, kèm Telegram và email đưa vào hàng đợi gửi (UC17)."""
+def notify(db: Session, user_ids: list[int | None], title: str, body: str, ticket_id: str | None = None, email: bool = True) -> None:
+    """Thông báo trên web, kèm Telegram và email đưa vào hàng đợi gửi (UC17); `email=False` khi đã gửi email riêng."""
     settings = get_settings()
     now = utcnow()
     for user_id in dict.fromkeys(uid for uid in user_ids if uid):
@@ -85,7 +85,7 @@ def notify(db: Session, user_ids: list[int | None], title: str, body: str, ticke
             continue
         if settings.telegram_bot_token and user.telegram_chat_id:
             db.add(OutboxMessage(channel="telegram", recipient=user.telegram_chat_id, subject=title, body=body, next_attempt_at=now))
-        if settings.smtp_host and user.email:
+        if email and settings.smtp_host and user.email:
             db.add(OutboxMessage(channel="email", recipient=user.email, subject=f"[IT OnSite] {title}", body=body, next_attempt_at=now))
 
 
@@ -241,7 +241,11 @@ def complete(db: Session, ticket: Ticket, actor: User, note: str, config: Busine
         "Phiếu đã hoàn tất",
         f"Cảm ơn bạn! Phiếu {ticket.id} đã hoàn tất. Bạn có thể đánh giá dịch vụ trong {config.review_window_days} ngày.",
         ticket.id,
+        email=False,
     )
+    from app.services.receipts import send_receipt
+
+    send_receipt(db, ticket)
 
 
 def money(value: int) -> str:
