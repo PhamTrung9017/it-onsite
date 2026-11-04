@@ -314,7 +314,7 @@ function TelegramGroupCard({ config, onDisconnect, busy }) {
             <ol className="small" style={{ paddingLeft: 20, margin: 0 }}>
               <li>Kết nối Telegram của bạn ở trang Thông báo.</li>
               <li>Thêm bot @{bot} vào nhóm chat của đội.</li>
-              <li>Gửi lệnh /ketnoinhom trong nhóm.</li>
+              <li>Gửi lệnh <span className="mono">/ketnoinhom@{bot}</span> trong nhóm.</li>
             </ol>
           )}
         </div>
