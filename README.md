@@ -45,7 +45,7 @@ it-onsite/
 ├── frontend/       Giao diện (React), xem frontend/README.md
 ├── infra/          Docker Compose, xem infra/README.md
 ├── docs/           Tài liệu dự án
-│   ├── srs/        Tài liệu đặc tả yêu cầu phần mềm (SRS)
+│   ├── srs/        Tài liệu đặc tả yêu cầu phần mềm (SRS), chính sách vận hành
 │   └── quan-ly/    WBS, bảng phân công nhiệm vụ
 └── .github/        Mẫu Issue, mẫu Pull Request, CI
 ```
@@ -70,6 +70,7 @@ Khi phát triển, chạy riêng backend (`backend/README.md`) và frontend (`fr
 | Tài liệu | Vị trí | Trạng thái |
 |---|---|---|
 | Đặc tả yêu cầu phần mềm (SRS) v0.1 | [docs/srs/SRS_IT_OnSite_v0.1.docx](docs/srs/SRS_IT_OnSite_v0.1.docx) | Đã duyệt |
+| Chính sách vận hành dịch vụ | [docs/srs/ChinhSachVanHanh.docx](docs/srs/ChinhSachVanHanh.docx) | Đã duyệt |
 | WBS và kế hoạch | [docs/quan-ly/WBS_IT_OnSite.xlsx](docs/quan-ly/WBS_IT_OnSite.xlsx) | Đã duyệt |
 | Phân công nhiệm vụ theo giai đoạn | [docs/quan-ly/PhanCong_IT_OnSite.xlsx](docs/quan-ly/PhanCong_IT_OnSite.xlsx) | Đang theo dõi |
 
