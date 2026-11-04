@@ -6,7 +6,7 @@ from app.core.config import get_settings
 from app.db import SessionLocal
 from app.models import OutboxMessage
 from tests.conftest import tomorrow_at
-from tests.test_flow import create_ticket
+from tests.test_flow import create_ticket, receive
 
 
 def test_overview_and_reports(qtv):
@@ -26,10 +26,14 @@ def test_report_export_matches_summary(qtv, khach):
     completed = [t for t in data["tickets"] if t["status"] == "HOAN_TAT" and t["completedAt"] and start <= t["completedAt"] <= end]
     assert len(created) == report["total"]
     assert len(completed) == report["done"] > 0
-    assert sum(t["amount"] for t in completed) == report["revenue"]
+    forfeited = [
+        t for t in data["tickets"] if t["deposit"] and t["deposit"]["status"] == "KHONG_HOAN" and start <= t["deposit"]["settledAt"] <= end
+    ]
+    assert forfeited and report["forfeitedDeposits"] == sum(t["deposit"]["amount"] for t in forfeited)
+    assert sum(t["amount"] for t in completed) + report["forfeitedDeposits"] == report["revenue"]
     for t in completed:
-        parts_of_amount = t["serviceAmount"] + t["partsAmount"] + t["surveyFee"] + t["lateFee"]
-        assert parts_of_amount == t["amount"], t["id"]
+        assert t["serviceAmount"] + t["partsAmount"] + t["surveyFee"] == t["amount"], t["id"]
+        assert t["amount"] == t["payment"]["amount"] + t["depositApplied"], t["id"]
     assert data["payroll"] == {"baseSalary": 5000000, "commissionPercent": 30}
     assert {t["techId"] for t in completed} <= {k["id"] for k in data["technicians"]}
     assert khach.get("/admin/reports/export?days=30").status_code == 403
@@ -98,7 +102,7 @@ def test_technician_management(qtv):
 
 def test_schedule_blocks_assignment_uc18(client, qtv, dpv, khach):
     ticket = create_ticket(khach, "Máy tính không lên nguồn, cần sửa.", hour=15)
-    received = dpv.ok("post", f"/tickets/{ticket['id']}/receive", {"categoryCode": "NGUON", "version": ticket["version"]})
+    received = receive(dpv, ticket, "NGUON")
     tech = next(t for t in qtv.ok("get", "/admin/overview")["technicians"] if "NGUON" in t["skills"])
     tomorrow = tomorrow_at(15)[:10]
     assert qtv.put("/admin/technicians", {**tech, "schedule": {**tech["schedule"], "start": "21:00"}}).status_code == 400

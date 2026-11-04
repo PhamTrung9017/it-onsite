@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildVietQR, crc16, sanitizeContent } from './vietqr.js';
 import { canTransition, STATUS } from './ticketStatus.js';
 import {
-  amountDue, canComplete, cancellationPolicy, hasConflict, offDuty, rankTechnicians, reviewPolicy, validateReview, validateSchedule,
-  validateSlot, warrantyStatus,
+  amountDue, canComplete, cancellationPolicy, depositDeadline, hasConflict, offDuty, rankTechnicians, reviewPolicy, validateReview, validateSchedule,
+  reschedulePolicy, validateSlot, warrantyStatus,
 } from './rules.js';
 import { formatSchedule } from './format.js';
 import { classifyIssue, redactPersonalData } from './classifier.js';
@@ -11,6 +11,7 @@ import { classifyIssue, redactPersonalData } from './classifier.js';
 const config = {
   surveyFee: 50000,
   freeCancelHours: 2,
+  depositMinutes: 30,
   techResponseMinutes: 15,
   travelBufferMinutes: 30,
   reviewWindowDays: 7,
@@ -43,17 +44,24 @@ describe('Máy trạng thái phiếu', () => {
 
 describe('BR-03 hủy và đổi lịch', () => {
   const now = new Date('2026-10-30T08:00:00+07:00').getTime();
-  it('miễn phí khi còn đủ thời gian', () => {
-    const t = { status: STATUS.DA_PHAN_CONG, slotStart: new Date(now + 3 * HOUR).toISOString() };
-    expect(cancellationPolicy(t, config, now)).toMatchObject({ allowed: true, fee: 0 });
+  const paid = { amount: 50000, status: 'DA_XAC_NHAN' };
+  it('hủy miễn phí khi cửa hàng chưa tiếp nhận phiếu', () => {
+    expect(cancellationPolicy({ status: STATUS.MOI, deposit: paid })).toMatchObject({ allowed: true, fee: 0 });
   });
-  it('tính phí khảo sát khi hủy sát giờ', () => {
-    const t = { status: STATUS.KTV_DA_NHAN, slotStart: new Date(now + HOUR).toISOString() };
-    expect(cancellationPolicy(t, config, now)).toMatchObject({ allowed: true, fee: 50000 });
+  it('mất phí giữ lịch khi hủy sau khi cửa hàng tiếp nhận', () => {
+    expect(cancellationPolicy({ status: STATUS.KTV_DA_NHAN, deposit: paid })).toMatchObject({ allowed: true, fee: 50000 });
+    expect(cancellationPolicy({ status: STATUS.KTV_DA_NHAN, deposit: null })).toMatchObject({ allowed: true, fee: 0 });
   });
   it('không cho hủy sau khi KTV check-in', () => {
-    const t = { status: STATUS.DANG_KHAO_SAT, slotStart: new Date(now + 5 * HOUR).toISOString() };
-    expect(cancellationPolicy(t, config, now).allowed).toBe(false);
+    expect(cancellationPolicy({ status: STATUS.DANG_KHAO_SAT, deposit: paid }).allowed).toBe(false);
+  });
+  it('khách đổi lịch khi còn ít nhất 2 giờ, sát giờ phải gọi cửa hàng', () => {
+    const at = (h) => ({ status: STATUS.DA_PHAN_CONG, slotStart: new Date(now + h * HOUR).toISOString() });
+    expect(reschedulePolicy(at(2), config, now).allowed).toBe(true);
+    expect(reschedulePolicy(at(1.5), config, now)).toMatchObject({ allowed: false, reason: expect.stringMatching(/gọi cửa hàng/) });
+  });
+  it('hạn chuyển phí giữ lịch là 30 phút sau khi gửi yêu cầu', () => {
+    expect(depositDeadline({ createdAt: '2026-10-30T01:00:00.000Z' }, config)).toBe('2026-10-30T01:30:00.000Z');
   });
 });
 
@@ -126,6 +134,11 @@ describe('BR-02 số tiền phải trả', () => {
   });
   it('thu phí khảo sát khi khách từ chối báo giá chính', () => {
     expect(amountDue({ quotes: [{ type: 'CHINH', status: 'TU_CHOI', items: [item(300000)] }] }, config)).toBe(50000);
+  });
+  it('trừ phí giữ lịch đã trả vào số tiền phải trả', () => {
+    const deposit = { amount: 50000, status: 'DA_XAC_NHAN' };
+    expect(amountDue({ deposit, quotes: [{ type: 'CHINH', status: 'DA_DUYET', items: [item(300000)] }] }, config)).toBe(250000);
+    expect(amountDue({ deposit, quotes: [{ type: 'CHINH', status: 'TU_CHOI', items: [item(300000)] }] }, config)).toBe(0);
   });
 });
 

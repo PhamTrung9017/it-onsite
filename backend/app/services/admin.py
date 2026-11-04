@@ -247,6 +247,7 @@ def save_config(db: Session, admin: User, data: dict) -> BusinessConfig:
     if (
         config.survey_fee < 0
         or config.free_cancel_hours < 0
+        or config.deposit_minutes < 5
         or config.tech_response_minutes < 1
         or config.travel_buffer_minutes < 0
         or config.review_window_days < 1

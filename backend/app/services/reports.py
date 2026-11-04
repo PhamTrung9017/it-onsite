@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.domain.status import STATUS_LABEL, Status
-from app.models import Assignment, Category, Payment, Technician, Ticket, User
-from app.services.common import load_config, main_quote_rejected, require_roles, utcnow
+from app.domain.status import STATUS_LABEL, DepositStatus, Status
+from app.models import Assignment, Category, Deposit, Payment, Technician, Ticket, User
+from app.services.common import load_config, main_quote_rejected, require_roles, ticket_revenue, utcnow
 from app.services.present import iso
 
 ALLOWED_DAYS = (7, 30, 90)
@@ -53,8 +53,13 @@ def _period(days: int | None, month: str | None, now: datetime) -> Period:
     return Period("days", start, now, start - timedelta(days=days), start)
 
 
-def _revenue(tickets: list[Ticket]) -> int:
-    return sum(t.payment.amount for t in tickets if t.payment)
+def _deposit_applied(ticket: Ticket) -> int:
+    deposit = ticket.deposit
+    return deposit.amount if deposit and deposit.status == DepositStatus.DA_TRU else 0
+
+
+def _revenue(tickets: list[Ticket], forfeited: list[Ticket] = ()) -> int:
+    return sum(ticket_revenue(t) for t in tickets) + sum(t.deposit.amount for t in forfeited)
 
 
 def _avg_hours(tickets: list[Ticket]) -> float:
@@ -73,8 +78,21 @@ def _completed_between(db: Session, start: datetime, end: datetime) -> list[Tick
     return list(db.scalars(query))
 
 
+def _forfeited_between(db: Session, start: datetime, end: datetime) -> list[Ticket]:
+    """Phiếu hủy có phí giữ lịch không hoàn, tính theo thời điểm hủy."""
+    query = (
+        select(Ticket)
+        .join(Deposit, Deposit.ticket_id == Ticket.id)
+        .where(Deposit.status == DepositStatus.KHONG_HOAN, Deposit.settled_at >= start, Deposit.settled_at < end)
+    )
+    return list(db.scalars(query))
+
+
 def report(db: Session, user: User, days: int | None = None, month: str | None = None) -> dict:
-    """Doanh thu, phiếu hoàn tất, thời gian xử lý, đánh giá tính theo ngày hoàn tất; số phiếu tạo, hủy tính theo ngày tạo."""
+    """Doanh thu, phiếu hoàn tất, thời gian xử lý, đánh giá tính theo ngày hoàn tất; số phiếu tạo, hủy tính theo ngày tạo.
+
+    Doanh thu gồm cả phí giữ lịch không hoàn của phiếu bị hủy, tính theo ngày hủy.
+    """
     require_roles(user, "QTV")
     now = utcnow()
     period = _period(days, month, now)
@@ -82,12 +100,18 @@ def report(db: Session, user: User, days: int | None = None, month: str | None =
     created = list(db.scalars(select(Ticket).where(Ticket.created_at >= period.start, Ticket.created_at < period.end)))
     completed = _completed_between(db, period.start, period.end)
     completed_prev = _completed_between(db, period.prev_start, period.prev_end)
+    forfeited = _forfeited_between(db, period.start, period.end)
+    forfeited_prev = _forfeited_between(db, period.prev_start, period.prev_end)
 
     by_day = []
     day = period.start.astimezone(tz)
     while day < min(period.end, now):
         next_day = day + timedelta(days=1)
-        by_day.append({"date": day.isoformat(), "revenue": _revenue([t for t in completed if day <= t.completed_at < next_day])})
+        revenue = _revenue(
+            [t for t in completed if day <= t.completed_at < next_day],
+            [t for t in forfeited if day <= t.deposit.settled_at < next_day],
+        )
+        by_day.append({"date": day.isoformat(), "revenue": revenue})
         day = next_day
 
     categories = db.scalars(select(Category).order_by(Category.position)).all()
@@ -102,8 +126,9 @@ def report(db: Session, user: User, days: int | None = None, month: str | None =
             by_tech.append({"name": tech.user.name, "done": len(mine), "rating": _avg_stars(mine), "revenue": _revenue(mine)})
     return {
         "period": period.to_dict(now),
-        "revenue": _revenue(completed),
-        "revenuePrev": _revenue(completed_prev),
+        "revenue": _revenue(completed, forfeited),
+        "revenuePrev": _revenue(completed_prev, forfeited_prev),
+        "forfeitedDeposits": sum(t.deposit.amount for t in forfeited),
         "done": len(completed),
         "donePrev": len(completed_prev),
         "avgHours": _avg_hours(completed),
@@ -120,19 +145,17 @@ def report(db: Session, user: User, days: int | None = None, month: str | None =
 
 
 def _amounts(ticket: Ticket) -> dict:
-    """Tách số tiền của phiếu: tiền công dịch vụ, linh kiện, phí khảo sát, phí đổi lịch sát giờ."""
+    """Tách số tiền của phiếu: tiền công dịch vụ, linh kiện, phí khảo sát (khách từ chối báo giá chính)."""
     items = [item for quote in ticket.quotes if quote.status in ("DA_DUYET", "DUYET_MOT_PHAN") for item in quote.items if item.selected]
     service = sum(i.unit_price * i.qty for i in items if i.kind == "service")
     parts = sum(i.unit_price * i.qty for i in items if i.kind == "part")
-    late_fee = ticket.late_reschedule_fee
     survey = 0
-    if ticket.payment and main_quote_rejected(ticket) and not ticket.is_warranty:
-        survey = max(ticket.payment.amount - late_fee, 0)
+    if ticket.status == Status.HOAN_TAT and main_quote_rejected(ticket) and not ticket.is_warranty:
+        survey = ticket_revenue(ticket)
     return {
         "serviceAmount": service,
         "partsAmount": parts,
         "surveyFee": survey,
-        "lateFee": late_fee,
         "parts": [{"name": i.name, "qty": i.qty, "unitPrice": i.unit_price} for i in items if i.kind == "part"],
     }
 
@@ -146,6 +169,7 @@ def export_data(db: Session, user: User, days: int | None = None, month: str | N
     start, end = period.start, period.end
     assigned = select(Assignment.ticket_id).where(Assignment.assigned_at >= start, Assignment.assigned_at < end)
     open_payment = select(Payment.ticket_id).where(Payment.status.in_(OPEN_PAYMENT_STATUSES))
+    settled = select(Deposit.ticket_id).where(Deposit.settled_at >= start, Deposit.settled_at < end)
     tickets = db.scalars(
         select(Ticket)
         .where(
@@ -154,6 +178,7 @@ def export_data(db: Session, user: User, days: int | None = None, month: str | N
                 (Ticket.completed_at >= start) & (Ticket.completed_at < end),
                 Ticket.id.in_(assigned),
                 Ticket.id.in_(open_payment),
+                Ticket.id.in_(settled),
             )
         )
         .order_by(Ticket.created_at.desc())
@@ -164,6 +189,7 @@ def export_data(db: Session, user: User, days: int | None = None, month: str | N
     rows = []
     for t in tickets:
         payment = t.payment
+        deposit = t.deposit
         rows.append(
             {
                 "id": t.id,
@@ -178,9 +204,19 @@ def export_data(db: Session, user: User, days: int | None = None, month: str | N
                 "techId": t.assignment.tech_id if t.assignment else None,
                 "appointmentAt": iso(t.assignment.appointment_at if t.assignment else t.slot_start),
                 **_amounts(t),
-                "amount": payment.amount if payment else None,
+                "amount": ticket_revenue(t) if payment else None,
+                "depositApplied": _deposit_applied(t),
+                "deposit": deposit
+                and {
+                    "amount": deposit.amount,
+                    "status": deposit.status,
+                    "confirmedAt": iso(deposit.confirmed_at),
+                    "settledAt": iso(deposit.settled_at),
+                },
+                "cancel": t.cancel,
                 "payment": payment
                 and {
+                    "amount": payment.amount,
                     "method": payment.method,
                     "status": payment.status,
                     "paidAt": iso(payment.paid_at),

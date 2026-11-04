@@ -10,9 +10,11 @@ from app.domain.rules import (
     amount_due,
     can_complete,
     cancellation_policy,
+    deposit_deadline,
     has_conflict,
     off_duty,
     rank_technicians,
+    reschedule_policy,
     review_policy,
     validate_review,
     validate_schedule,
@@ -49,10 +51,18 @@ def test_state_machine_blocks_invalid_moves():
 
 
 def test_cancellation_policy_br03():
-    assert cancellation_policy(Status.DA_PHAN_CONG, NOW + timedelta(hours=3), CONFIG, NOW).fee == 0
-    late = cancellation_policy(Status.KTV_DA_NHAN, NOW + timedelta(hours=1), CONFIG, NOW)
-    assert late.allowed and late.fee == CONFIG.survey_fee
-    assert not cancellation_policy(Status.DANG_KHAO_SAT, NOW + timedelta(hours=5), CONFIG, NOW).allowed
+    assert cancellation_policy(Status.MOI, CONFIG.survey_fee).fee == 0
+    received = cancellation_policy(Status.DA_PHAN_CONG, CONFIG.survey_fee)
+    assert received.allowed and received.fee == CONFIG.survey_fee
+    assert cancellation_policy(Status.KTV_DA_NHAN, 0).fee == 0, "phiếu bảo hành không có phí giữ lịch"
+    assert not cancellation_policy(Status.DANG_KHAO_SAT, CONFIG.survey_fee).allowed
+
+
+def test_reschedule_policy_br03():
+    assert reschedule_policy(Status.KTV_DA_NHAN, NOW + timedelta(hours=2), CONFIG, NOW).allowed
+    assert not reschedule_policy(Status.KTV_DA_NHAN, NOW + timedelta(hours=1, minutes=59), CONFIG, NOW).allowed
+    assert not reschedule_policy(Status.DANG_THUC_HIEN, NOW + timedelta(hours=5), CONFIG, NOW).allowed
+    assert deposit_deadline(NOW, CONFIG) == NOW + timedelta(minutes=30)
 
 
 def test_slot_must_be_ahead_and_within_service_hours():
@@ -88,6 +98,8 @@ def test_amount_due_br02():
     assert amount_due(False, 350000, False, CONFIG) == 350000
     assert amount_due(True, 0, False, CONFIG) == CONFIG.survey_fee
     assert amount_due(True, 0, True, CONFIG) == 0
+    assert amount_due(False, 350000, False, CONFIG, deposit=50000) == 300000, "phí giữ lịch trừ vào tổng tiền"
+    assert amount_due(True, 0, False, CONFIG, deposit=50000) == 0, "từ chối báo giá: phí giữ lịch là phí khảo sát"
 
 
 def test_warranty_and_review_rules():

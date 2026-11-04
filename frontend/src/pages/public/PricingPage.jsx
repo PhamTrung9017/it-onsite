@@ -34,7 +34,7 @@ export default function PricingPage() {
                 ))}
                 <tr>
                   <td className="strong">Phí khảo sát</td>
-                  <td className="muted">Chỉ thu khi bạn từ chối báo giá</td>
+                  <td className="muted">Trả trước để giữ lịch, trừ vào tổng tiền khi bạn duyệt báo giá</td>
                   <td>—</td><td>—</td>
                   <td className="right"><Money value={data.config.surveyFee} /></td>
                 </tr>
@@ -42,7 +42,9 @@ export default function PricingPage() {
             </table>
           </Card>
           <Alert title="Chính sách" icon={Info}>
-            Hủy hoặc đổi lịch miễn phí khi thao tác trước giờ hẹn ít nhất {data.config.freeCancelHours} giờ; muộn hơn tính phí khảo sát {money(data.config.surveyFee)}.
+            Sau khi gửi yêu cầu, bạn chuyển khoản phí giữ lịch {money(data.config.surveyFee)} trong {data.config.depositMinutes} phút; quá hạn yêu cầu tự hủy.
+            Hủy khi cửa hàng chưa tiếp nhận được hoàn phí; hủy sau khi cửa hàng đã tiếp nhận hoặc vắng mặt khi kỹ thuật viên đến thì không hoàn.
+            Đổi lịch miễn phí khi còn ít nhất {data.config.freeCancelHours} giờ trước giờ hẹn; sát giờ hơn vui lòng gọi cửa hàng.
             Giờ phục vụ {data.config.serviceHours.start}–{data.config.serviceHours.end} hằng ngày, tại các phường: {data.config.areas.join(', ')}.
           </Alert>
         </div>

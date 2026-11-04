@@ -1,4 +1,4 @@
-"""Tác vụ chạy nền: thu hồi phân công quá hạn (BR-06) và gửi hàng đợi thông báo (NFR-14)."""
+"""Tác vụ chạy nền: thu hồi phân công quá hạn (BR-06), hủy phiếu quá hạn trả phí giữ lịch, gửi hàng đợi thông báo (NFR-14)."""
 
 import asyncio
 import logging
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db import SessionLocal
+from app.services.deposits import sweep_unpaid
 from app.services.dispatch import sweep_overdue_assignments
 from app.services.outbox import process_outbox
 
@@ -34,5 +35,6 @@ def start_background_jobs() -> list[asyncio.Task]:
     settings = get_settings()
     return [
         asyncio.create_task(_loop(sweep_overdue_assignments, settings.sweep_interval_seconds)),
+        asyncio.create_task(_loop(sweep_unpaid, settings.sweep_interval_seconds)),
         asyncio.create_task(_loop(process_outbox, settings.outbox_interval_seconds)),
     ]

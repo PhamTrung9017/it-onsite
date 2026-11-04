@@ -44,6 +44,7 @@ def catalog(db: Db) -> dict:
         "config": {
             "surveyFee": config.survey_fee,
             "freeCancelHours": config.free_cancel_hours,
+            "depositMinutes": config.deposit_minutes,
             "serviceHours": {"start": config.service_start, "end": config.service_end},
             "areas": config.areas,
             "reviewWindowDays": config.review_window_days,

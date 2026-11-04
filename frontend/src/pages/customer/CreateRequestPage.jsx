@@ -262,12 +262,14 @@ export default function CreateRequestPage() {
               <Field label="Thông tin đăng nhập máy (nếu cần)" htmlFor="cred" hint="Được mã hóa, chỉ kỹ thuật viên phụ trách xem được và tự xóa khi phiếu kết thúc.">
                 <input id="cred" className="input" autoComplete="off" value={credentials} onChange={(e) => setCredentials(e.target.value)} placeholder="Ví dụ: mật khẩu Windows" />
               </Field>
-              <Alert tone="warning" title={`Phí khảo sát ${money(data.config.surveyFee)}`} icon={ShieldCheck}>
-                Miễn phí khi bạn duyệt báo giá; chỉ thu khi bạn từ chối sửa sau khi kỹ thuật viên đã kiểm tra.
-                Hủy hoặc đổi lịch miễn phí trước giờ hẹn ít nhất {data.config.freeCancelHours} giờ.
+              <Alert tone="warning" title={`Phí giữ lịch ${money(data.config.surveyFee)}`} icon={ShieldCheck}>
+                Sau khi gửi yêu cầu, bạn chuyển khoản trước phí khảo sát {money(data.config.surveyFee)} trong {data.config.depositMinutes} phút để giữ lịch; quá hạn, yêu cầu tự hủy.
+                Khoản này được trừ vào tổng tiền khi bạn duyệt báo giá; nếu bạn từ chối báo giá, khoản này là phí khảo sát.
+                Hủy trước khi cửa hàng tiếp nhận được hoàn phí giữ lịch, hủy sau đó thì không hoàn.
+                Đổi lịch miễn phí trước giờ hẹn ít nhất {data.config.freeCancelHours} giờ.
               </Alert>
               <div className="stack-sm">
-                <label className="check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>Tôi đồng ý điều khoản dịch vụ, chính sách phí khảo sát và hủy, đổi lịch.</span></label>
+                <label className="check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>Tôi đồng ý điều khoản dịch vụ, chính sách phí giữ lịch và hủy, đổi lịch.</span></label>
                 <label className="check"><input type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} /><span>Tôi đồng ý cho IT OnSite xử lý thông tin liên hệ, địa chỉ và mô tả sự cố để thực hiện yêu cầu này.</span></label>
                 {errors.consent && <span className="small" style={{ color: 'var(--danger)' }}>{errors.consent}</span>}
               </div>

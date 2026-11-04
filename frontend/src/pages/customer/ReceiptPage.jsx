@@ -11,19 +11,21 @@ const PAYMENT_TEXT = {
   DA_THU: 'Đã thu tiền mặt',
   DA_DOI_SOAT: 'Đã thu tiền mặt',
   DA_XAC_NHAN: 'Đã nhận chuyển khoản',
-  MIEN_PHI: 'Không phát sinh chi phí',
+  MIEN_PHI: 'Không phải thanh toán thêm',
 };
 
-/** Các dòng tính tiền của phiếu: hạng mục đã duyệt, phí khảo sát khi từ chối báo giá, phí đổi lịch sát giờ. */
+/** Phí giữ lịch khách đã trả trước và được trừ vào tổng tiền. */
+const depositApplied = (t) => (t.deposit?.status === 'DA_TRU' ? t.deposit.amount : 0);
+
+/** Các dòng tính tiền của phiếu: hạng mục đã duyệt, hoặc phí khảo sát khi khách từ chối báo giá. */
 function receiptLines(t) {
   const lines = t.quotes
     .filter((q) => q.status === 'DA_DUYET' || q.status === 'DUYET_MOT_PHAN')
     .flatMap((q) => q.items.filter((i) => i.selected).map((i) => ({ ...i, extra: q.type === 'BO_SUNG' })));
-  const lateFee = t.lateRescheduleFee || 0;
   const mainRejected = t.quotes.some((q) => q.type === 'CHINH' && q.status === 'TU_CHOI');
   const rows = lines.map((i) => ({ key: i.id, quoteItemId: i.id, name: i.name, note: i.extra ? 'Báo giá bổ sung' : '', qty: i.qty, unitPrice: i.unitPrice, warrantyDays: i.warrantyDays }));
-  if (mainRejected && t.payment.amount > lateFee) rows.push({ key: 'khao-sat', name: 'Phí khảo sát', note: 'Khách từ chối báo giá', qty: 1, unitPrice: t.payment.amount - lateFee });
-  if (lateFee) rows.push({ key: 'doi-lich', name: 'Phí đổi lịch sát giờ', note: '', qty: 1, unitPrice: lateFee });
+  const survey = t.payment.amount + depositApplied(t);
+  if (mainRejected && survey > 0) rows.push({ key: 'khao-sat', name: 'Phí khảo sát', note: 'Khách từ chối báo giá', qty: 1, unitPrice: survey });
   return rows;
 }
 
@@ -102,7 +104,13 @@ export default function ReceiptPage() {
               ))}
             </tbody>
             <tfoot>
-              <tr><td className="strong">Tổng thanh toán</td><td className="col-opt" /><td className="col-opt" /><td className="right nowrap strong">{money(t.payment.amount)}</td><td className="col-opt" /></tr>
+              {depositApplied(t) > 0 && (
+                <>
+                  <tr><td>Tổng tiền dịch vụ</td><td className="col-opt" /><td className="col-opt" /><td className="right nowrap">{money(t.payment.amount + depositApplied(t))}</td><td className="col-opt" /></tr>
+                  <tr><td>Phí giữ lịch đã trả trước</td><td className="col-opt" /><td className="col-opt" /><td className="right nowrap">−{money(depositApplied(t))}</td><td className="col-opt" /></tr>
+                </>
+              )}
+              <tr><td className="strong">{depositApplied(t) > 0 ? 'Thanh toán khi hoàn tất' : 'Tổng thanh toán'}</td><td className="col-opt" /><td className="col-opt" /><td className="right nowrap strong">{money(t.payment.amount)}</td><td className="col-opt" /></tr>
             </tfoot>
           </table>
         </div>
@@ -110,6 +118,7 @@ export default function ReceiptPage() {
         <dl className="kv receipt-info">
           <dt>Thanh toán</dt><dd>{PAYMENT_TEXT[t.payment.status] || t.payment.status}{t.payment.method && ` · ${PAYMENT_METHOD_LABEL[t.payment.method]}`}</dd>
           <dt>Thời điểm</dt><dd>{formatDateTime(t.payment.paidAt)}</dd>
+          {depositApplied(t) > 0 && <><dt>Phí giữ lịch</dt><dd>{money(depositApplied(t))}, chuyển khoản lúc {formatDateTime(t.deposit.reportedAt || t.deposit.confirmedAt)}</dd></>}
         </dl>
 
         <p className="tiny muted receipt-foot">

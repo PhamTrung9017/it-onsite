@@ -7,6 +7,7 @@ import { api } from '../../services/api.js';
 import { Alert, Button, Card, Empty, ErrorState, Field, Loading, Modal, PageHead } from '../../components/ui.jsx';
 import { QuoteTable } from '../../components/ticket.jsx';
 import { formatDateTime, money } from '../../lib/format.js';
+import { depositHeld } from '../../lib/rules.js';
 
 export default function QuoteReviewPage() {
   const { id } = useParams();
@@ -33,6 +34,7 @@ export default function QuoteReviewPage() {
     if (r) { refresh(); back(); }
   }
   const isMain = quote.type === 'CHINH';
+  const held = depositHeld(t);
 
   return (
     <div style={{ maxWidth: 720 }}>
@@ -42,7 +44,7 @@ export default function QuoteReviewPage() {
       <div className="stack">
         {quote.note && <Alert title="Ghi chú khảo sát của kỹ thuật viên">{quote.note}</Alert>}
         <Card>
-          <QuoteTable quote={quote} selectable selected={selected} onToggle={toggle} surveyFee={t.config.surveyFee} showSurveyFee={isMain && !t.isWarranty} />
+          <QuoteTable quote={quote} selectable selected={selected} onToggle={toggle} surveyFee={t.config.surveyFee} showSurveyFee={isMain && !t.isWarranty} deposit={held} />
         </Card>
         {!isMain && <Alert>Các hạng mục đã duyệt trước đó vẫn được giữ nguyên. Từ chối báo giá bổ sung thì kỹ thuật viên tiếp tục các hạng mục cũ.</Alert>}
         <div className="stack-sm">
@@ -50,13 +52,13 @@ export default function QuoteReviewPage() {
             {all ? `Đồng ý báo giá (${quote.items.length} hạng mục)` : `Đồng ý ${selected.length}/${quote.items.length} hạng mục`}
           </Button>
           <Button variant="danger" block icon={X} onClick={() => setRejecting(true)}>
-            {isMain && !t.isWarranty ? `Từ chối báo giá (thu phí khảo sát ${money(t.config.surveyFee)})` : 'Từ chối báo giá'}
+            {isMain && !t.isWarranty ? `Từ chối báo giá (${held ? 'phí giữ lịch đã trả là phí khảo sát' : `thu phí khảo sát ${money(t.config.surveyFee)}`})` : 'Từ chối báo giá'}
           </Button>
         </div>
       </div>
       <Modal open={rejecting} title="Từ chối báo giá" onClose={() => setRejecting(false)}
         footer={<><Button variant="outline" onClick={() => setRejecting(false)}>Quay lại</Button><Button variant="danger-solid" loading={busy === 'reject'} onClick={() => decide('reject')}>Xác nhận từ chối</Button></>}>
-        {isMain && !t.isWarranty && <Alert tone="warning">Kỹ thuật viên sẽ không thực hiện hạng mục nào. Bạn thanh toán phí khảo sát {money(t.config.surveyFee)}.</Alert>}
+        {isMain && !t.isWarranty && <Alert tone="warning">Kỹ thuật viên sẽ không thực hiện hạng mục nào. {held ? `Phí giữ lịch ${money(held)} bạn đã trả được tính là phí khảo sát, không phải trả thêm.` : `Bạn thanh toán phí khảo sát ${money(t.config.surveyFee)}.`}</Alert>}
         <Field label="Lý do" htmlFor="rr"><textarea id="rr" className="textarea" style={{ minHeight: 80 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ví dụ: chi phí cao hơn dự kiến" /></Field>
       </Modal>
     </div>

@@ -16,6 +16,7 @@ MAX_DAYS_OFF = 60
 class BusinessConfig:
     survey_fee: int = 50000
     free_cancel_hours: int = 2
+    deposit_minutes: int = 30
     tech_response_minutes: int = 15
     travel_buffer_minutes: int = 30
     review_window_days: int = 7
@@ -38,6 +39,7 @@ class BusinessConfig:
         return cls(
             survey_fee=int(data["surveyFee"]),
             free_cancel_hours=int(data["freeCancelHours"]),
+            deposit_minutes=int(data.get("depositMinutes", 30)),
             tech_response_minutes=int(data["techResponseMinutes"]),
             travel_buffer_minutes=int(data["travelBufferMinutes"]),
             review_window_days=int(data["reviewWindowDays"]),
@@ -57,6 +59,7 @@ class BusinessConfig:
         return {
             "surveyFee": self.survey_fee,
             "freeCancelHours": self.free_cancel_hours,
+            "depositMinutes": self.deposit_minutes,
             "techResponseMinutes": self.tech_response_minutes,
             "travelBufferMinutes": self.travel_buffer_minutes,
             "reviewWindowDays": self.review_window_days,
@@ -99,13 +102,32 @@ def _minutes(hhmm: str) -> int:
     return int(hours) * 60 + int(minutes)
 
 
-def cancellation_policy(status: str, appointment_at: datetime, config: BusinessConfig, now: datetime) -> Policy:
-    """BR-03: điều kiện hủy, đổi lịch và phí áp dụng."""
+def cancellation_policy(status: str, deposit: int) -> Policy:
+    """BR-03: hủy trước khi KTV check-in; cửa hàng đã tiếp nhận phiếu thì phí giữ lịch không được hoàn.
+
+    `deposit` là phí giữ lịch khách đã trả cho phiếu (0 với phiếu bảo hành); `fee` là số tiền khách mất khi hủy.
+    """
+    if Status(status) not in CANCELLABLE:
+        return Policy(False, "Kỹ thuật viên đã check-in, không thể hủy hoặc đổi lịch.")
+    if status == Status.MOI:
+        return Policy(True, "Cửa hàng chưa tiếp nhận phiếu nên hủy miễn phí; phí giữ lịch đã chuyển được hoàn lại.", 0)
+    if deposit == 0:
+        return Policy(True, "Hủy miễn phí.", 0)
+    return Policy(True, "Cửa hàng đã tiếp nhận phiếu nên phí giữ lịch không được hoàn khi hủy.", deposit)
+
+
+def reschedule_policy(status: str, appointment_at: datetime, config: BusinessConfig, now: datetime) -> Policy:
+    """BR-03: khách đổi lịch miễn phí khi còn đủ thời gian trước giờ hẹn; sát giờ phải gọi cửa hàng."""
     if Status(status) not in CANCELLABLE:
         return Policy(False, "Kỹ thuật viên đã check-in, không thể hủy hoặc đổi lịch.")
     if appointment_at - now >= timedelta(hours=config.free_cancel_hours):
-        return Policy(True, f"Miễn phí vì còn ít nhất {config.free_cancel_hours} giờ trước giờ hẹn.", 0)
-    return Policy(True, f"Còn dưới {config.free_cancel_hours} giờ trước giờ hẹn nên tính phí khảo sát.", config.survey_fee)
+        return Policy(True, f"Đổi lịch miễn phí khi còn ít nhất {config.free_cancel_hours} giờ trước giờ hẹn.")
+    return Policy(False, f"Còn dưới {config.free_cancel_hours} giờ trước giờ hẹn, vui lòng gọi cửa hàng để đổi lịch.")
+
+
+def deposit_deadline(created_at: datetime, config: BusinessConfig) -> datetime:
+    """Hạn khách chuyển phí giữ lịch; quá hạn chưa chuyển thì phiếu tự hủy."""
+    return created_at + timedelta(minutes=config.deposit_minutes)
 
 
 def validate_slot(slot_start: datetime | None, config: BusinessConfig, now: datetime, tz: ZoneInfo) -> str | None:
@@ -262,11 +284,14 @@ def response_deadline(assigned_at: datetime, config: BusinessConfig) -> datetime
     return assigned_at + timedelta(minutes=config.tech_response_minutes)
 
 
-def amount_due(main_quote_rejected: bool, approved_total: int, is_warranty: bool, config: BusinessConfig) -> int:
-    """BR-02: chỉ thu phí khảo sát khi khách từ chối báo giá chính; phiếu bảo hành không tính phí khảo sát."""
-    if main_quote_rejected:
-        return 0 if is_warranty else config.survey_fee
-    return approved_total
+def amount_due(main_quote_rejected: bool, approved_total: int, is_warranty: bool, config: BusinessConfig, deposit: int = 0) -> int:
+    """BR-02: khách duyệt báo giá thì trả tổng hạng mục đã duyệt; từ chối thì chịu phí khảo sát.
+
+    Phí giữ lịch khách đã trả trước được trừ vào số tiền này (khi từ chối báo giá, phí giữ lịch chính là phí khảo sát);
+    phiếu bảo hành không tính phí khảo sát.
+    """
+    total = (0 if is_warranty else deposit or config.survey_fee) if main_quote_rejected else approved_total
+    return max(total - deposit, 0)
 
 
 def warranty_status(end_at: datetime, now: datetime) -> dict:

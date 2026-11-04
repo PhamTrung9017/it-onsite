@@ -1,15 +1,60 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, CreditCard, FileText, Phone, Receipt, ThumbsDown, XCircle } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Copy, CreditCard, FileText, Phone, QrCode, Receipt, ThumbsDown, Wallet, XCircle } from 'lucide-react';
 import { useAction, useLoad } from '../../hooks/useApi.js';
-import { useNotifications } from '../../context/AppContext.jsx';
+import { useNotifications, useToast } from '../../context/AppContext.jsx';
 import { api } from '../../services/api.js';
 import {
-  Alert, Badge, Button, ButtonLink, Card, ErrorState, Field, Loading, Modal, PageHead, PhotoGallery, StarInput, Stars, StatusBadge,
+  Alert, Badge, Button, ButtonLink, Card, ErrorState, Field, Loading, Modal, PageHead, PhotoGallery, QRImage, StarInput, Stars, StatusBadge,
 } from '../../components/ui.jsx';
 import { AddressLine, QuoteStatusBadge, QuoteTable, TicketTimeline } from '../../components/ticket.jsx';
-import { STATUS } from '../../lib/ticketStatus.js';
+import { DEPOSIT_STATUS_LABEL, DEPOSIT_STATUS_TONE, STATUS } from '../../lib/ticketStatus.js';
 import { combineDateTime, formatDateTime, formatTime, initials, money, timeSlots, toDateInput } from '../../lib/format.js';
+
+/** Phí giữ lịch: khách quét VietQR chuyển phí khảo sát trước để cửa hàng tiếp nhận phiếu (BR-02). */
+function DepositCard({ ticket, onReported }) {
+  const toast = useToast();
+  const { busy, run } = useAction();
+  const { data, loading, error, reload } = useLoad(() => api.getDepositInfo(ticket.id), [ticket.id, ticket.deposit.status]);
+  const copy = (text) => navigator.clipboard?.writeText(text).then(() => toast.success('Đã sao chép.'));
+  if (ticket.deposit.status === 'CHO_XAC_NHAN') {
+    return (
+      <Alert tone="info" title="Đang đối chiếu phí giữ lịch" icon={Wallet}>
+        Bạn đã báo chuyển {money(ticket.deposit.amount)}. Cửa hàng đối chiếu với sao kê ngân hàng rồi tiếp nhận phiếu, thường trong vài phút.
+      </Alert>
+    );
+  }
+  if (ticket.deposit.status === 'DA_XAC_NHAN') {
+    return <Alert tone="success" title="Cửa hàng đã nhận phí giữ lịch" icon={CheckCircle2}>Phí {money(ticket.deposit.amount)} sẽ được trừ vào tổng tiền khi thanh toán. Điều phối viên đang tiếp nhận phiếu.</Alert>;
+  }
+  return (
+    <Card title="Chuyển phí giữ lịch">
+      {loading ? <Loading rows={2} /> : error ? <ErrorState error={error} onRetry={reload} /> : (
+        <div className="stack" style={{ alignItems: 'center' }}>
+          <p className="small muted center">
+            Chuyển trước phí khảo sát <strong>{money(data.amount)}</strong> trước <strong>{formatTime(data.deadline)}</strong> để cửa hàng tiếp nhận phiếu;
+            quá hạn phiếu tự hủy. Khoản này được trừ vào tổng tiền khi thanh toán.
+          </p>
+          <QRImage payload={data.qrPayload} />
+          <dl className="kv" style={{ width: '100%' }}>
+            <dt>Ngân hàng</dt><dd>{data.bank.name}</dd>
+            <dt>Số tài khoản</dt><dd className="row-sm"><span className="mono">{data.bank.accountNumber}</span><button type="button" className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => copy(data.bank.accountNumber)} aria-label="Sao chép số tài khoản"><Copy size={15} /></button></dd>
+            <dt>Chủ tài khoản</dt><dd>{data.bank.accountName}</dd>
+            <dt>Nội dung</dt><dd className="mono">{data.content}</dd>
+          </dl>
+          <Button variant="accent" block icon={QrCode} loading={busy === 'dep'}
+            onClick={async () => { if (await run('dep', () => api.reportDeposit(ticket.id), 'Đã ghi nhận. Cửa hàng sẽ xác nhận khi nhận được tiền.')) onReported(); }}>Tôi đã chuyển khoản</Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+const CANCEL_DEPOSIT_NOTE = {
+  CHO_HOAN: (d) => ` Phí giữ lịch ${money(d.amount)} sẽ được chuyển trả trong vòng 1 ngày làm việc.`,
+  DA_HOAN: (d) => ` Đã hoàn phí giữ lịch ${money(d.amount)}.`,
+  KHONG_HOAN: (d) => ` Phí giữ lịch ${money(d.amount)} không được hoàn.`,
+};
 
 export default function TicketDetailPage() {
   const { id } = useParams();
@@ -48,6 +93,7 @@ export default function TicketDetailPage() {
       <div className="split">
         <div className="stack">
           {/* Việc khách cần làm */}
+          {t.status === STATUS.MOI && t.deposit && <DepositCard ticket={t} onReported={() => { refresh(); reload(true); }} />}
           {pendingQuote && (
             <Alert tone="warning" title={pendingQuote.type === 'BO_SUNG' ? 'Có báo giá bổ sung chờ bạn duyệt' : 'Kỹ thuật viên đã gửi báo giá'} icon={FileText}>
               <div className="row wrap" style={{ marginTop: 10 }}>
@@ -77,6 +123,7 @@ export default function TicketDetailPage() {
                   <div className="small muted">Số tiền cần thanh toán</div>
                   <div style={{ fontSize: 26, fontWeight: 800 }} className="price">{money(t.payment?.amount ?? t.amountDue)}</div>
                   {t.quotes.some((q) => q.type === 'CHINH' && q.status === 'TU_CHOI') && <div className="tiny muted">Phí khảo sát do bạn từ chối báo giá</div>}
+                  {t.deposit?.status === 'DA_TRU' && <div className="tiny muted">Đã trừ phí giữ lịch {money(t.deposit.amount)}</div>}
                 </div>
                 {t.payment?.status === 'CHO_XAC_NHAN' ? <Badge tone="info">Đang chờ xác nhận chuyển khoản</Badge>
                   : <ButtonLink to={`/khach/phieu/${t.id}/thanh-toan`} variant="accent" icon={CreditCard}>Thanh toán</ButtonLink>}
@@ -88,7 +135,8 @@ export default function TicketDetailPage() {
               <div className="row-between wrap">
                 <div>
                   <div className="small muted">Đã thanh toán</div>
-                  <div style={{ fontSize: 22, fontWeight: 800 }} className="price">{money(t.payment.amount)}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800 }} className="price">{money(t.payment.amount + (t.deposit?.status === 'DA_TRU' ? t.deposit.amount : 0))}</div>
+                  {t.deposit?.status === 'DA_TRU' && <div className="tiny muted">Gồm phí giữ lịch {money(t.deposit.amount)} đã trả trước</div>}
                 </div>
                 <ButtonLink to={`/khach/phieu/${t.id}/bien-nhan`} variant="outline" icon={Receipt}>Xem biên nhận</ButtonLink>
               </div>
@@ -117,7 +165,7 @@ export default function TicketDetailPage() {
           {t.status === STATUS.DA_HUY && t.cancel && (
             <Alert tone="danger" title="Phiếu đã hủy" icon={XCircle}>
               {t.cancel.byName || 'Khách hàng'} hủy lúc {formatDateTime(t.cancel.at)}. Lý do: {t.cancel.reason}.
-              {t.cancel.fee > 0 && ` Phí hủy sát giờ: ${money(t.cancel.fee)}.`}
+              {t.deposit && CANCEL_DEPOSIT_NOTE[t.deposit.status]?.(t.deposit)}
             </Alert>
           )}
 
@@ -145,6 +193,7 @@ export default function TicketDetailPage() {
                 <dt>Địa chỉ</dt><dd><AddressLine ticket={t} /></dd>
                 <dt>Giờ hẹn</dt><dd>{formatDateTime(appointment)}</dd>
                 <dt>Tạo lúc</dt><dd>{formatDateTime(t.createdAt)}</dd>
+                {t.deposit && <><dt>Phí giữ lịch</dt><dd className="row-sm wrap">{money(t.deposit.amount)}<Badge tone={DEPOSIT_STATUS_TONE[t.deposit.status]} plain>{DEPOSIT_STATUS_LABEL[t.deposit.status]}</Badge></dd></>}
               </dl>
             </div>
           </Card>
@@ -167,9 +216,9 @@ export default function TicketDetailPage() {
             <Card title="Lịch hẹn">
               <div className="stack">
                 <div className="row-sm"><CalendarClock size={18} color="var(--brand-600)" aria-hidden /><span className="strong">{formatDateTime(appointment)}</span></div>
-                <p className="tiny muted">{t.policy.reason}</p>
+                <p className="tiny muted">{t.reschedulePolicy.reason} {t.policy.reason}</p>
                 <div className="row wrap">
-                  <Button variant="outline" size="sm" onClick={() => { setDate(toDateInput(appointment)); setTime(slots.includes(formatTime(appointment)) ? formatTime(appointment) : slots[0]); setModal('reschedule'); }}>Đổi lịch hẹn</Button>
+                  <Button variant="outline" size="sm" disabled={!t.reschedulePolicy.allowed} onClick={() => { setDate(toDateInput(appointment)); setTime(slots.includes(formatTime(appointment)) ? formatTime(appointment) : slots[0]); setModal('reschedule'); }}>Đổi lịch hẹn</Button>
                   <Button variant="danger" size="sm" onClick={() => setModal('cancel')}>Hủy yêu cầu</Button>
                 </div>
               </div>
@@ -187,13 +236,13 @@ export default function TicketDetailPage() {
 
       <Modal open={modal === 'cancel'} title="Hủy yêu cầu" onClose={() => setModal(null)}
         footer={<><Button variant="outline" onClick={() => setModal(null)}>Không hủy</Button><Button variant="danger-solid" loading={busy === 'cancel'} onClick={() => act('cancel', () => api.cancelTicket(t.id, { reason }), 'Đã hủy yêu cầu.')}>Xác nhận hủy</Button></>}>
-        {t.policy.fee > 0 && <Alert tone="warning">Còn dưới {t.config.freeCancelHours} giờ trước giờ hẹn, hủy lúc này sẽ tính phí khảo sát {money(t.policy.fee)}.</Alert>}
+        {t.policy.fee > 0 && <Alert tone="warning">Cửa hàng đã tiếp nhận phiếu, hủy lúc này phí giữ lịch {money(t.policy.fee)} không được hoàn.</Alert>}
+        {t.status === STATUS.MOI && ['CHO_XAC_NHAN', 'DA_XAC_NHAN'].includes(t.deposit?.status) && <Alert>Phí giữ lịch bạn đã chuyển sẽ được hoàn trong vòng 1 ngày làm việc.</Alert>}
         <Field label="Lý do hủy" htmlFor="rs"><textarea id="rs" className="textarea" style={{ minHeight: 80 }} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
       </Modal>
 
       <Modal open={modal === 'reschedule'} title="Đổi lịch hẹn" onClose={() => setModal(null)}
         footer={<><Button variant="outline" onClick={() => setModal(null)}>Đóng</Button><Button loading={busy === 'resch'} onClick={() => act('resch', () => api.rescheduleTicket(t.id, { slotStart: combineDateTime(date, time) }), 'Đã đổi lịch hẹn.')}>Lưu lịch mới</Button></>}>
-        {t.policy.fee > 0 && <Alert tone="warning">Đổi lịch sát giờ sẽ tính phí khảo sát {money(t.policy.fee)}.</Alert>}
         <div className="grid-2">
           <Field label="Ngày" htmlFor="d"><input id="d" type="date" className="input" min={toDateInput(Date.now())} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <Field label="Khung giờ" htmlFor="tm"><select id="tm" className="select" value={time} onChange={(e) => setTime(e.target.value)}>{slots.map((s) => <option key={s}>{s}</option>)}</select></Field>
