@@ -27,7 +27,8 @@ from app.models import (
     User,
 )
 from app.services.auth import email_taken, revoke_all_sessions, validate_email, validate_phone
-from app.services.common import audit, load_config, require_roles, utcnow
+from app.services.changes import config_changes, describe, join, list_change, schedule_text
+from app.services.common import audit, load_config, money, require_roles, utcnow
 
 ROLES = ("KHACH", "KTV", "DPV", "QTV")
 SETUP_LINK_HOURS = 72
@@ -73,7 +74,18 @@ def save_service(db: Session, user: User, data) -> Service:
         service = db.get(Service, data.id)
         if service is None:
             raise not_found("Không tìm thấy dịch vụ.")
-        audit(db, user, "SUA_BANG_GIA", str(service.id), f"{service.name}: {service.price} → {data.price}")
+        names = {c.code: c.name for c in db.scalars(select(Category))}
+        change = describe(
+            [
+                ("Tên", service.name, data.name.strip()),
+                ("Loại sự cố", names.get(service.category_code), names.get(data.category_code)),
+                ("Giá", service.price, data.price, money),
+                ("Thời lượng (phút)", service.duration_min, data.duration_min),
+                ("Bảo hành (ngày)", service.warranty_days, data.warranty_days),
+                ("Đang áp dụng", service.active, data.active),
+            ]
+        )
+        audit(db, user, "SUA_BANG_GIA", str(service.id), f"{service.name}: {change}")
     else:
         service = Service()
         db.add(service)
@@ -99,6 +111,16 @@ def save_part(db: Session, user: User, data) -> Part:
         part = db.get(Part, data.id)
         if part is None:
             raise not_found("Không tìm thấy linh kiện.")
+        change = describe(
+            [
+                ("Tên", part.name, data.name.strip()),
+                ("Giá", part.price, data.price, money),
+                ("Tồn kho", part.stock, data.stock),
+                ("Bảo hành (ngày)", part.warranty_days, data.warranty_days),
+                ("Đang bán", part.active, data.active),
+            ]
+        )
+        audit(db, user, "SUA_LINH_KIEN", str(part.id), f"{part.name}: {change}")
     else:
         part = Part()
         db.add(part)
@@ -108,7 +130,8 @@ def save_part(db: Session, user: User, data) -> Part:
     part.warranty_days = data.warranty_days
     part.active = data.active
     db.flush()
-    audit(db, user, "SUA_LINH_KIEN" if data.id else "THEM_LINH_KIEN", str(part.id), part.name)
+    if not data.id:
+        audit(db, user, "THEM_LINH_KIEN", str(part.id), part.name)
     return part
 
 
@@ -171,6 +194,14 @@ def save_technician(db: Session, admin: User, data) -> Technician:
         tech = db.get(Technician, data.id)
         if tech is None:
             raise not_found("Không tìm thấy kỹ thuật viên.")
+        before = {
+            "name": tech.user.name,
+            "phone": tech.user.phone,
+            "skills": list(tech.skills),
+            "areas": list(tech.areas),
+            "active": tech.active,
+            "schedule": WorkSchedule.from_dict(tech.schedule),
+        }
         tech.skills, tech.areas, tech.active = skills, areas, data.active
         if schedule is not None:
             tech.schedule = schedule.to_dict()
@@ -181,7 +212,20 @@ def save_technician(db: Session, admin: User, data) -> Technician:
             if phone != tech.user.phone and db.scalar(select(func.count()).select_from(User).where(User.phone == phone)):
                 raise conflict("Số điện thoại đã được dùng cho tài khoản khác.")
             tech.user.phone = phone
-        audit(db, admin, "SUA_KTV", str(tech.id), tech.user.name)
+        names = {c.code: c.name for c in db.scalars(select(Category))}
+        change = join(
+            describe(
+                [
+                    ("Họ tên", before["name"], tech.user.name),
+                    ("Số điện thoại", before["phone"], tech.user.phone),
+                    ("Đang nhận việc", before["active"], tech.active),
+                    ("Lịch làm việc", before["schedule"], WorkSchedule.from_dict(tech.schedule), schedule_text),
+                ]
+            ),
+            list_change("Kỹ năng", [names.get(s, s) for s in before["skills"]], [names.get(s, s) for s in tech.skills]),
+            list_change("Khu vực", before["areas"], list(tech.areas)),
+        )
+        audit(db, admin, "SUA_KTV", str(tech.id), f"{tech.user.name}: {change}")
         return tech
     user = _new_internal_user(db, data.name, data.email or "", data.phone or "", ["KTV"])
     tech = Technician(
@@ -222,7 +266,7 @@ def save_roles(db: Session, admin: User, user_id: int, roles: list[str], locked:
         revoke_all_sessions(db, user)
     user.roles = roles
     user.locked = locked
-    audit(db, admin, "PHAN_QUYEN", user.email, ", ".join(roles) + (" (khóa)" if locked else ""))
+    audit(db, admin, "PHAN_QUYEN", user.email or user.phone, ", ".join(roles) + (" (khóa)" if locked else ""))
     return user
 
 
@@ -265,6 +309,7 @@ def save_config(db: Session, admin: User, data: dict) -> BusinessConfig:
     if not re.match(r"^\d{6}$", config.bank_bin) or not re.match(r"^\d{6,19}$", config.bank_account_number):
         raise ApiError("Mã BIN gồm 6 chữ số, số tài khoản gồm 6–19 chữ số.")
     row = db.get(Setting, 1)
+    change = config_changes(BusinessConfig.from_dict(row.data), config)
     row.data = config.to_dict()
-    audit(db, admin, "CAU_HINH", "tham số nghiệp vụ")
+    audit(db, admin, "CAU_HINH", "tham số nghiệp vụ", change)
     return config

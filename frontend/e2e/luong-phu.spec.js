@@ -80,6 +80,34 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     expect((await weekly).suggestedFilename()).toMatch(/^bao-cao-\d{4}-\d{2}-\d{2}-den-\d{4}-\d{2}-\d{2}\.xlsx$/);
   });
 
+  test('UC21: báo cáo theo khoảng ngày tùy chọn, lọc theo kỹ thuật viên và phường', async ({ page }) => {
+    await loginAs(page, 'qtv@demo.vn');
+    await page.goto('/quan-tri/bao-cao');
+    await expect(page.getByText('Tỷ lệ hoàn tất')).toBeVisible();
+    await expect(page.getByText('Thời gian tại nhà khách')).toBeVisible();
+    const total = await page.locator('.stat', { hasText: 'Phiếu hoàn tất' }).locator('.v').textContent();
+
+    await page.getByRole('button', { name: 'Tùy chọn' }).click();
+    const end = await page.getByLabel('Đến ngày').inputValue();
+    const start = await page.evaluate(() => {
+      const d = new Date(Date.now() - 13 * 86_400_000);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+    await page.getByLabel('Từ ngày').fill(start);
+    await expect(page.getByText(/^Từ \d{2}\/\d{2}\/\d{4} đến /)).toBeVisible();
+
+    await page.selectOption('#ft', { label: 'Nguyễn Văn An' });
+    await expect(page.getByRole('button', { name: 'Bỏ lọc' })).toBeEnabled();
+    await expect(page.locator('table tbody tr')).toHaveCount(await page.locator('table tbody tr', { hasText: 'Nguyễn Văn An' }).count());
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Xuất Excel' }).click();
+    expect((await download).suggestedFilename()).toBe(`bao-cao-${start}-den-${end}.xlsx`);
+
+    await page.getByRole('button', { name: 'Bỏ lọc' }).click();
+    await page.getByRole('button', { name: '30 ngày' }).click();
+    await expect(page.locator('.stat', { hasText: 'Phiếu hoàn tất' }).locator('.v')).toHaveText(total);
+  });
+
   test('UC13, UC10: nghiệm thu chưa đạt, báo giá bổ sung, làm lại rồi thu tiền mặt', async ({ page }) => {
     await loginAs(page, 'chau.le@demo.vn');
     const ticket = (await myTickets(page)).find((t) => t.status === 'DANG_THUC_HIEN');
@@ -242,6 +270,28 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await page.locator('label.check input').check();
     await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
     await expect(page).toHaveURL(/\/khach\/tao-yeu-cau$/);
+  });
+
+  test('UC01: đăng ký chỉ bằng số điện thoại, đăng nhập bằng số điện thoại, bổ sung email sau', async ({ page }) => {
+    await page.goto('/dang-ky');
+    await page.fill('#n', 'Ngô Thị Hạnh');
+    await page.fill('#p', '0987654321');
+    await page.fill('#pw', 'matkhau123');
+    await page.locator('label.check input').check();
+    await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
+    await expect(page).toHaveURL(/\/khach\/tao-yeu-cau$/);
+
+    await page.evaluate(() => Object.keys(localStorage).filter((k) => /session|tokens/.test(k)).forEach((k) => localStorage.removeItem(k)));
+    await page.goto('/dang-nhap');
+    await page.fill('#id', '0987654321');
+    await page.fill('#pw', 'matkhau123');
+    await page.click('button[type=submit]');
+    await page.waitForURL((u) => !u.pathname.includes('dang-nhap'));
+    await page.goto('/khach/ho-so');
+    await page.fill('#pe', 'hanh.ngo@example.com');
+    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+    await expect(page.getByText('Đã lưu hồ sơ.')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 }).locator('..')).toContainText('hanh.ngo@example.com');
   });
 
   test('UC17: đánh dấu đã đọc thông báo', async ({ page }) => {

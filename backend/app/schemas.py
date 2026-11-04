@@ -12,7 +12,7 @@ class Body(BaseModel):
 
 class RegisterBody(Body):
     name: str = Field(max_length=120)
-    email: str = Field(max_length=160)
+    email: str = Field(default="", max_length=160)
     phone: str = Field(max_length=20)
     password: str = Field(max_length=128)
     consent: bool = False
@@ -43,6 +43,7 @@ class ChangePasswordBody(Body):
 
 class ProfileBody(Body):
     name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=160)
     phone: str | None = Field(default=None, max_length=20)
     address: str | None = Field(default=None, max_length=255)
     ward: str | None = Field(default=None, max_length=80)

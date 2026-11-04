@@ -17,7 +17,7 @@ const data = {
   technicians: [{ id: 'k1', name: 'Nguyễn Văn An', active: true }, { id: 'k2', name: 'Lê Hoàng Phúc', active: true }, { id: 'k3', name: 'Đã nghỉ', active: false }],
   tickets: [
     ticket('A', {
-      ...applied, completedAt: at(10, 12), serviceAmount: 300000, partsAmount: 1200000, amount: 1500000, payment: paid('TIEN_MAT', 'DA_DOI_SOAT', 1450000),
+      ...applied, completedAt: at(10, 12), checkInAt: at(10, 11, 9), workDoneAt: at(10, 11, 11), serviceAmount: 300000, partsAmount: 1200000, amount: 1500000, payment: paid('TIEN_MAT', 'DA_DOI_SOAT', 1450000),
       parts: [{ name: 'SSD 512GB', qty: 1, unitPrice: 1200000 }], review: { stars: 5, comment: '', at: at(10, 13) },
       assignments: [{ techId: 'k2', assignedAt: at(10, 10, 10), result: 'TU_CHOI' }, { techId: 'k1', assignedAt: at(10, 10, 11), result: 'NHAN' }],
     }),
@@ -76,8 +76,9 @@ describe('UC21 xuất báo cáo Excel', () => {
   it('chi tiết công việc có dòng cộng từng kỹ thuật viên để đối chiếu lương', () => {
     const subtotal = values(row('Chi tiết công việc KTV', 'Cộng Nguyễn Văn An'));
     expect(subtotal[1]).toBe('3 phiếu');
-    expect(subtotal.slice(6, 11)).toEqual([300000, 50000, 1200000, 1550000, 100000]);
-    expect(subtotal.slice(13, 15)).toEqual([350000, 105000]);
+    expect(subtotal[3]).toBe(2);
+    expect(subtotal.slice(7, 12)).toEqual([300000, 50000, 1200000, 1550000, 100000]);
+    expect(subtotal.slice(14, 16)).toEqual([350000, 105000]);
   });
 
   it('các sheet phụ: đối soát, linh kiện, đánh giá thấp lên trước, danh sách phiếu tạo trong kỳ', () => {
@@ -101,6 +102,16 @@ describe('UC21 xuất báo cáo Excel', () => {
     expect(tickets.stickyRowsCount).toBe(sheet('Danh sách phiếu').length - header.length);
     expect(header[0].every((c) => c.borderStyle === 'thin')).toBe(true);
     expect(sheet('Danh sách phiếu')[tickets.stickyRowsCount - 1].every((c) => c.fontWeight === 'bold' && c.align === 'center')).toBe(true);
+  });
+
+  it('khoảng ngày tùy chọn và bộ lọc ghi rõ trong file', () => {
+    const range = { ...data, period: { kind: 'range', from: at(10, 5, 0), to: at(10, 21, 0) }, filter: { techId: 'k1', category: 'VIRUS', ward: 'Bến Thành' } };
+    const out = reportSheets({ report, data: range, now, options: { categories: [{ code: 'VIRUS', name: 'Virus và mã độc' }] } });
+    const lines = out[0].data.slice(1, 5).map((r) => r[0]?.value);
+    expect(lines).toContain('Bộ lọc: Kỹ thuật viên: Nguyễn Văn An; Loại sự cố: Virus và mã độc; Phường: Bến Thành');
+    expect(out[3].sheet).toBe('Hoa hồng KTV');
+    expect(reportFileName(range, now)).toBe('bao-cao-2026-10-05-den-2026-10-20.xlsx');
+    expect(summarizeExport(data, now).totals.onsite).toBe(2);
   });
 
   it('ghi được ra file xlsx', async () => {

@@ -118,3 +118,48 @@ def test_schedule_blocks_assignment_uc18(client, qtv, dpv, khach):
         {"techId": tech["id"], "appointmentAt": received["slotStart"], "version": received["version"]},
     )
     assert response.status_code == 409
+
+
+def test_audit_log_records_old_and_new_values_nfr08(qtv):
+    overview = qtv.ok("get", "/admin/overview")
+    service = next(s for s in overview["services"] if s["categoryCode"] == "VIRUS")
+    qtv.ok("put", "/admin/services", {**service, "price": 250000, "warrantyDays": 45})
+    part = overview["parts"][0]
+    qtv.ok("put", "/admin/parts", {**part, "stock": part["stock"] + 5})
+    config = overview["config"]
+    areas = [a for a in config["areas"] if a != "Bình Quới"]
+    qtv.ok("put", "/admin/config", {**config, "surveyFee": 60000, "depositMinutes": 45, "areas": areas})
+    tech = next(t for t in overview["technicians"] if t["active"])
+    qtv.ok("put", "/admin/technicians", {**tech, "skills": [*tech["skills"], "KHAC"], "schedule": {**tech["schedule"], "start": "09:00"}})
+
+    details = {a["action"]: a["detail"] for a in reversed(qtv.ok("get", "/admin/overview")["audit"])}
+    assert "Giá: 200.000đ → 250.000đ" in details["SUA_BANG_GIA"] and "Bảo hành (ngày): 30 → 45" in details["SUA_BANG_GIA"]
+    assert f"Tồn kho: {part['stock']} → {part['stock'] + 5}" in details["SUA_LINH_KIEN"]
+    assert "Phí khảo sát: 50.000đ → 60.000đ" in details["CAU_HINH"]
+    assert "Thời hạn trả phí giữ lịch (phút): 30 → 45" in details["CAU_HINH"]
+    assert "Khu vực phục vụ: bỏ Bình Quới" in details["CAU_HINH"]
+    assert "Kỹ năng: thêm Khác" in details["SUA_KTV"] and "08:00–" in details["SUA_KTV"] and "→" in details["SUA_KTV"]
+
+
+def test_report_custom_range_and_filters(qtv):
+    today = datetime.now(get_settings().tz).date()
+    start = (today.replace(day=1) if today.day > 1 else today).isoformat()
+    full = qtv.ok("get", f"/admin/reports?from={start}&to={today.isoformat()}")
+    assert full["period"]["kind"] == "range" and full["filter"] == {"techId": None, "category": None, "ward": None}
+    assert full["completionRate"] is None or 0 <= full["completionRate"] <= 100
+    assert full["onsiteHours"] is None or full["onsiteHours"] > 0
+
+    month = qtv.ok("get", "/admin/reports?days=30")
+    tech = qtv.ok("get", "/admin/overview")["technicians"][0]
+    mine = qtv.ok("get", f"/admin/reports?days=30&techId={tech['id']}")
+    assert [t["name"] for t in mine["byTech"]] in ([], [tech["name"]])
+    assert mine["done"] == next((t["done"] for t in month["byTech"] if t["name"] == tech["name"]), 0)
+    by_category = qtv.ok("get", "/admin/reports?days=30&category=CAI_HDH")
+    assert {c["name"] for c in by_category["byCategory"]} <= {"Cài đặt hệ điều hành"}
+    by_ward = qtv.ok("get", "/admin/reports/export?days=30&ward=Bến Thành")
+    assert by_ward["filter"]["ward"] == "Bến Thành" and all(t["ward"] == "Bến Thành" for t in by_ward["tickets"])
+    done = [t for t in by_ward["tickets"] if t["status"] == "HOAN_TAT" and t["checkInAt"]]
+    assert all(t["workDoneAt"] is None or t["workDoneAt"] >= t["checkInAt"] for t in done)
+
+    for bad in ("from=2026-10-10", "from=2026-10-10&to=2026-10-01", "from=x&to=y", "from=2026-01-01&to=2027-12-31"):
+        assert qtv.get(f"/admin/reports?{bad}").status_code == 400

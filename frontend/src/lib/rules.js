@@ -179,8 +179,19 @@ export function canComplete(ticket) {
   return (ticket.photosBefore?.length || 0) >= 1 && (ticket.photosAfter?.length || 0) >= 1;
 }
 
-/** Kỳ báo cáo (UC21) theo giờ địa phương: N ngày gần nhất tính cả hôm nay, hoặc một tháng dương lịch dạng "2026-10". */
-export function reportPeriod({ days, month }, now = new Date()) {
+/**
+ * Kỳ báo cáo (UC21) theo giờ địa phương: N ngày gần nhất tính cả hôm nay, một tháng dương lịch dạng "2026-10",
+ * hoặc khoảng ngày from–to dạng "2026-10-01" (tính cả hai đầu). Kỳ trước là khoảng cùng độ dài liền trước.
+ */
+export function reportPeriod({ days, month, from, to }, now = new Date()) {
+  if (from && to) {
+    const [fy, fm, fd] = from.split('-').map(Number);
+    const [ty, tm, td] = to.split('-').map(Number);
+    const start = new Date(fy, fm - 1, fd);
+    const end = new Date(ty, tm - 1, td + 1);
+    const length = Math.round((end - start) / DAY);
+    return { kind: 'range', start, end, prevStart: new Date(fy, fm - 1, fd - length), prevEnd: start };
+  }
   if (month) {
     const [y, m] = month.split('-').map(Number);
     const start = new Date(y, m - 1, 1);

@@ -12,6 +12,7 @@ import { ApiError } from '../apiError.js';
 const KEY = 'itonsite.mock.v2';
 const SESSION_KEY = 'itonsite.session.v1';
 const DAY = 86400000;
+const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.]+$/;
 
 export { ApiError };
 
@@ -120,6 +121,28 @@ function audit(db, user, action, target, detail = '') {
   db.audit.push({ at: nowIso(), userId: user?.id || 'he-thong', userName: user?.name || 'Hệ thống', action, target, detail });
   if (db.audit.length > 500) db.audit.splice(0, db.audit.length - 500);
 }
+
+/* ---------- Nhật ký "cũ → mới" (NFR-08) ---------- */
+
+const WEEKDAY = { 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7', 7: 'CN' };
+const plain = (v) => {
+  if (typeof v === 'boolean') return v ? 'Có' : 'Không';
+  if (Array.isArray(v)) return v.join(', ') || '(trống)';
+  return v === null || v === undefined || v === '' ? '(trống)' : String(v);
+};
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const describeChanges = (rows) => rows
+  .filter(([, oldValue, newValue]) => !same(oldValue, newValue))
+  .map(([label, oldValue, newValue, fmt = plain]) => `${label}: ${fmt(oldValue)} → ${fmt(newValue)}`)
+  .join('; ');
+function listChange(label, oldList, newList) {
+  const added = newList.filter((x) => !oldList.includes(x));
+  const removed = oldList.filter((x) => !newList.includes(x));
+  const parts = [...(added.length ? [`thêm ${added.join(', ')}`] : []), ...(removed.length ? [`bỏ ${removed.join(', ')}`] : [])];
+  return parts.length ? `${label}: ${parts.join('; ')}` : '';
+}
+const joinChanges = (...parts) => parts.filter(Boolean).join('; ') || 'Không thay đổi';
+const scheduleText = (sc) => `${sc.workDays.map((d) => WEEKDAY[d]).join(', ')} ${sc.start}–${sc.end}${sc.daysOff.length ? `, nghỉ ${sc.daysOff.join(', ')}` : ''}`;
 
 /** Chuyển trạng thái duy nhất của hệ thống: kiểm tra hợp lệ, ghi lịch sử, tăng phiên bản, gửi thông báo. */
 function transition(db, t, to, actor, note = '') {
@@ -289,8 +312,19 @@ function complete(db, t, actor, note) {
   notify(db, [t.customerId], 'Phiếu đã hoàn tất', `Cảm ơn bạn! Phiếu ${t.id} đã hoàn tất. Bạn có thể đánh giá dịch vụ trong ${db.config.reviewWindowDays} ngày.`, t.id);
 }
 
-/** Kỳ báo cáo hợp lệ như backend: 7, 30, 90 ngày hoặc một tháng không ở tương lai. */
-function mockPeriod({ days, month }, now) {
+/** Kỳ báo cáo hợp lệ như backend: 7, 30, 90 ngày, một tháng hoặc khoảng ngày tối đa 366 ngày, không ở tương lai. */
+function mockPeriod({ days, month, from, to }, now) {
+  if (from || to) {
+    const valid = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '') && !Number.isNaN(new Date(v).getTime());
+    if (!from || !to) throw new ApiError('Chọn đủ ngày bắt đầu và ngày kết thúc.');
+    if (!valid(from)) throw new ApiError('Ngày bắt đầu không hợp lệ.');
+    if (!valid(to)) throw new ApiError('Ngày kết thúc không hợp lệ.');
+    if (from > to) throw new ApiError('Ngày bắt đầu phải trước ngày kết thúc.');
+    const period = reportPeriod({ from, to }, now);
+    if ((period.end - period.start) / DAY > 366) throw new ApiError('Khoảng thời gian báo cáo tối đa 366 ngày.');
+    if (period.start > now) throw new ApiError('Chưa có số liệu cho khoảng thời gian này.');
+    return period;
+  }
   if (month) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new ApiError('Tháng báo cáo không hợp lệ.');
     const period = reportPeriod({ month }, now);
@@ -300,6 +334,13 @@ function mockPeriod({ days, month }, now) {
   if (![7, 30, 90].includes(days)) throw new ApiError('Khoảng thời gian báo cáo không hợp lệ.');
   return reportPeriod({ days }, now);
 }
+
+/** Lọc báo cáo theo kỹ thuật viên phụ trách, loại sự cố, phường. */
+const reportFilter = ({ techId, category, ward }) => (t) => (!techId || t.assignment?.techId === techId)
+  && (!category || t.categoryCode === category) && (!ward || t.ward === ward);
+
+/** Lúc kỹ thuật viên báo hoàn thành lần cuối (chuyển sang chờ nghiệm thu). */
+const workDoneAt = (t) => t.history.filter((h) => h.status === STATUS.CHO_NGHIEM_THU).map((h) => h.at).sort().at(-1) || null;
 
 /* ---------- API ---------- */
 
@@ -312,7 +353,7 @@ export const mockApi = {
   /* ---------- Xác thực (UC01) ---------- */
   login: ({ identifier, password }) => respond((db) => {
     const id = identifier.trim().toLowerCase();
-    const user = db.users.find((u) => u.email.toLowerCase() === id || u.phone === id.replace(/\s/g, ''));
+    const user = db.users.find((u) => u.email?.toLowerCase() === id || u.phone === id.replace(/\s/g, ''));
     if (!user || user.password !== password) throw new ApiError('Email/số điện thoại hoặc mật khẩu không đúng.', 401);
     if (user.locked) throw new ApiError('Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.', 403);
     localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id, at: nowIso() }));
@@ -326,14 +367,17 @@ export const mockApi = {
 
   me: () => respond((db) => publicUser(currentUser(db)), 80),
 
-  register: ({ name, email, phone, password, consent }) => respond((db) => {
+  /** Đăng ký bằng số điện thoại; email không bắt buộc. */
+  register: ({ name, email: rawEmail = '', phone: rawPhone, password, consent }) => respond((db) => {
+    const email = rawEmail.trim() || null;
+    const phone = (rawPhone || '').replace(/\s/g, '');
     if (!consent) throw new ApiError('Bạn cần đồng ý điều khoản và chính sách xử lý dữ liệu cá nhân.');
     if (!name.trim()) throw new ApiError('Vui lòng nhập họ tên.');
-    if (!/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(email)) throw new ApiError('Email không hợp lệ.');
+    if (email && !EMAIL_RE.test(email)) throw new ApiError('Email không hợp lệ.');
     if (!/^0\d{9}$/.test(phone)) throw new ApiError('Số điện thoại gồm 10 chữ số, bắt đầu bằng 0.');
     if (password.length < 8) throw new ApiError('Mật khẩu cần ít nhất 8 ký tự.');
-    if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase() || u.phone === phone)) {
-      throw new ApiError('Email hoặc số điện thoại đã được đăng ký.', 409);
+    if (db.users.some((u) => (email && u.email?.toLowerCase() === email.toLowerCase()) || u.phone === phone)) {
+      throw new ApiError(email ? 'Email hoặc số điện thoại đã được đăng ký.' : 'Số điện thoại đã được đăng ký.', 409);
     }
     const user = { id: `u-${Date.now()}`, name: name.trim(), email, phone, password, roles: ['KHACH'], locked: false, address: '', ward: '', createdAt: nowIso(), consentAt: nowIso() };
     db.users.push(user);
@@ -343,7 +387,7 @@ export const mockApi = {
   }, 400),
 
   requestPasswordReset: ({ email }) => respond((db) => {
-    const user = db.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+    const user = db.users.find((u) => u.email?.toLowerCase() === email.trim().toLowerCase());
     if (user) db.resetTokens.push({ userId: user.id, at: nowIso() });
     // Luôn trả cùng một thông báo để không lộ email nào đã đăng ký
     return { ok: true };
@@ -372,6 +416,13 @@ export const mockApi = {
   updateProfile: (data) => respond((db) => {
     const user = currentUser(db);
     if (data.phone && !/^0\d{9}$/.test(data.phone)) throw new ApiError('Số điện thoại gồm 10 chữ số, bắt đầu bằng 0.');
+    if (data.email !== undefined) {
+      const email = data.email.trim() || null;
+      if (email && !EMAIL_RE.test(email)) throw new ApiError('Email không hợp lệ.');
+      if (email && db.users.some((u) => u.id !== user.id && u.email?.toLowerCase() === email.toLowerCase())) throw new ApiError('Email đã được dùng cho tài khoản khác.', 409);
+      if (!email && !user.roles.includes('KHACH')) throw new ApiError('Tài khoản nội bộ cần có email.');
+      user.email = email;
+    }
     Object.assign(user, { name: data.name?.trim() || user.name, phone: data.phone || user.phone, address: data.address ?? user.address, ward: data.ward ?? user.ward });
     audit(db, user, 'CAP_NHAT_HO_SO', user.id);
     return publicUser(user);
@@ -1026,7 +1077,12 @@ export const mockApi = {
     if (!(svc.price >= 0) || !(svc.durationMin > 0) || !(svc.warrantyDays >= 0)) throw new ApiError('Giá, thời lượng và thời hạn bảo hành phải là số hợp lệ.');
     if (svc.id) {
       const cur = db.services.find((s) => s.id === svc.id);
-      audit(db, user, 'SUA_BANG_GIA', svc.id, `${cur.price} → ${svc.price}`);
+      const cat = (code) => db.categories.find((c) => c.code === code)?.name;
+      const change = joinChanges(describeChanges([
+        ['Tên', cur.name, svc.name.trim()], ['Loại sự cố', cat(cur.categoryCode), cat(svc.categoryCode)], ['Giá', cur.price, Number(svc.price), money],
+        ['Thời lượng (phút)', cur.durationMin, Number(svc.durationMin)], ['Bảo hành (ngày)', cur.warrantyDays, Number(svc.warrantyDays)], ['Đang áp dụng', cur.active, svc.active],
+      ]));
+      audit(db, user, 'SUA_BANG_GIA', svc.id, `${cur.name}: ${change}`);
       Object.assign(cur, svc);
     } else {
       db.services.push({ ...svc, id: `dv-${Date.now()}`, active: true });
@@ -1038,9 +1094,19 @@ export const mockApi = {
     const user = requireRole(db, 'QTV');
     if (!part.name?.trim()) throw new ApiError('Vui lòng nhập tên linh kiện.');
     if (!(part.price >= 0) || !(part.stock >= 0) || !(part.warrantyDays >= 0)) throw new ApiError('Giá, tồn kho và bảo hành phải là số không âm.');
-    if (part.id) Object.assign(db.parts.find((p) => p.id === part.id), part);
-    else db.parts.push({ ...part, id: `lk-${Date.now()}`, active: true });
-    audit(db, user, part.id ? 'SUA_LINH_KIEN' : 'THEM_LINH_KIEN', part.name);
+    if (part.id) {
+      const cur = db.parts.find((p) => p.id === part.id);
+      const change = joinChanges(describeChanges([
+        ['Tên', cur.name, part.name.trim()], ['Giá', cur.price, Number(part.price), money], ['Tồn kho', cur.stock, Number(part.stock)],
+        ['Bảo hành (ngày)', cur.warrantyDays, Number(part.warrantyDays)], ['Đang bán', cur.active, part.active],
+      ]));
+      audit(db, user, 'SUA_LINH_KIEN', part.id, `${cur.name}: ${change}`);
+      Object.assign(cur, part);
+    } else {
+      const id = `lk-${Date.now()}`;
+      db.parts.push({ ...part, id, active: true });
+      audit(db, user, 'THEM_LINH_KIEN', id, part.name);
+    }
   }),
 
   saveTechnician: (data) => respond((db) => {
@@ -1052,18 +1118,28 @@ export const mockApi = {
     if (scheduleError) throw new ApiError(scheduleError);
     if (data.id) {
       const t = db.technicians.find((x) => x.id === data.id);
-      Object.assign(t, { skills: data.skills, areas: data.areas, active: data.active }, schedule && { schedule });
       const u = db.users.find((x) => x.id === t.userId);
+      const before = { name: u.name, phone: u.phone, skills: [...t.skills], areas: [...t.areas], active: t.active, schedule: t.schedule };
+      Object.assign(t, { skills: data.skills, areas: data.areas, active: data.active }, schedule && { schedule });
       if (data.phone) u.phone = data.phone;
       if (data.name) u.name = data.name;
-    } else {
-      if (!data.name?.trim() || !/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(data.email || '')) throw new ApiError('Vui lòng nhập họ tên và email hợp lệ.');
-      if (db.users.some((u) => u.email.toLowerCase() === data.email.toLowerCase())) throw new ApiError('Email đã tồn tại.', 409);
-      const u = { id: `u-${Date.now()}`, name: data.name.trim(), email: data.email, phone: data.phone || '', password: 'doimatkhau123', roles: ['KTV'], locked: false, createdAt: nowIso(), consentAt: nowIso() };
-      db.users.push(u);
-      db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: data.skills, areas: data.areas, rating: 5, ratingCount: 0, active: true, schedule: schedule || { ...DEFAULT_SCHEDULE } });
+      const cat = (code) => db.categories.find((c) => c.code === code)?.name || code;
+      const change = joinChanges(
+        describeChanges([['Họ tên', before.name, u.name], ['Số điện thoại', before.phone, u.phone], ['Đang nhận việc', before.active, t.active],
+          ['Lịch làm việc', before.schedule, t.schedule, scheduleText]]),
+        listChange('Kỹ năng', before.skills.map(cat), t.skills.map(cat)),
+        listChange('Khu vực', before.areas, t.areas),
+      );
+      audit(db, user, 'SUA_KTV', t.id, `${u.name}: ${change}`);
+      return;
     }
-    audit(db, user, data.id ? 'SUA_KTV' : 'THEM_KTV', data.name);
+    if (!data.name?.trim() || !EMAIL_RE.test(data.email || '')) throw new ApiError('Vui lòng nhập họ tên và email hợp lệ.');
+    if (db.users.some((u) => u.email?.toLowerCase() === data.email.toLowerCase())) throw new ApiError('Email đã tồn tại.', 409);
+    const u = { id: `u-${Date.now()}`, name: data.name.trim(), email: data.email, phone: data.phone || '', password: 'doimatkhau123', roles: ['KTV'], locked: false, createdAt: nowIso(), consentAt: nowIso() };
+    db.users.push(u);
+    const id = `k-${Date.now()}`;
+    db.technicians.push({ id, userId: u.id, skills: data.skills, areas: data.areas, rating: 5, ratingCount: 0, active: true, schedule: schedule || { ...DEFAULT_SCHEDULE } });
+    audit(db, user, 'THEM_KTV', id, data.name);
   }),
 
   saveUserRoles: (userId, { roles, locked }) => respond((db) => {
@@ -1077,14 +1153,14 @@ export const mockApi = {
     }
     u.roles = roles;
     u.locked = Boolean(locked);
-    audit(db, admin, 'PHAN_QUYEN', u.email, `${roles.join(', ')}${locked ? ' (khóa)' : ''}`);
+    audit(db, admin, 'PHAN_QUYEN', u.email || u.phone, `${roles.join(', ')}${locked ? ' (khóa)' : ''}`);
   }),
 
   createInternalUser: ({ name, email, phone, roles }) => respond((db) => {
     const admin = requireRole(db, 'QTV');
     if (!name?.trim() || !/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(email || '')) throw new ApiError('Vui lòng nhập họ tên và email hợp lệ.');
     if (!roles?.length) throw new ApiError('Chọn ít nhất một vai trò.');
-    if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) throw new ApiError('Email đã tồn tại.', 409);
+    if (db.users.some((u) => u.email?.toLowerCase() === email.toLowerCase())) throw new ApiError('Email đã tồn tại.', 409);
     const u = { id: `u-${Date.now()}`, name: name.trim(), email, phone: phone || '', password: 'doimatkhau123', roles, locked: false, createdAt: nowIso(), consentAt: nowIso() };
     db.users.push(u);
     if (roles.includes('KTV')) db.technicians.push({ id: `k-${Date.now()}`, userId: u.id, skills: ['KHAC'], areas: [db.config.areas[0]], rating: 5, ratingCount: 0, active: true, schedule: { ...DEFAULT_SCHEDULE } });
@@ -1103,8 +1179,21 @@ export const mockApi = {
     if (!/^\d{6}$/.test(cfg.bank.bin) || !/^\d{6,19}$/.test(cfg.bank.accountNumber)) throw new ApiError('Mã BIN gồm 6 chữ số, số tài khoản gồm 6–19 chữ số.');
     const payroll = { baseSalary: n(cfg.payroll?.baseSalary ?? 0), commissionPercent: n(cfg.payroll?.commissionPercent ?? 0) };
     if (!(payroll.baseSalary >= 0) || !(payroll.commissionPercent >= 0 && payroll.commissionPercent <= 100)) throw new ApiError('Các tham số phải là số hợp lệ.');
+    const before = db.config;
     db.config = { ...db.config, ...cfg, surveyFee: n(cfg.surveyFee), freeCancelHours: n(cfg.freeCancelHours), depositMinutes: n(cfg.depositMinutes), techResponseMinutes: n(cfg.techResponseMinutes), travelBufferMinutes: n(cfg.travelBufferMinutes), reviewWindowDays: n(cfg.reviewWindowDays), payroll };
-    audit(db, user, 'CAU_HINH', 'tham số nghiệp vụ');
+    const c = db.config;
+    const hours = (x) => `${x.serviceHours.start}–${x.serviceHours.end}`;
+    audit(db, user, 'CAU_HINH', 'tham số nghiệp vụ', joinChanges(
+      describeChanges([
+        ['Phí khảo sát', before.surveyFee, c.surveyFee, money], ['Thời hạn trả phí giữ lịch (phút)', before.depositMinutes, c.depositMinutes],
+        ['Khách tự đổi lịch trước (giờ)', before.freeCancelHours, c.freeCancelHours], ['Thời hạn KTV phản hồi (phút)', before.techResponseMinutes, c.techResponseMinutes],
+        ['Thời gian đệm di chuyển (phút)', before.travelBufferMinutes, c.travelBufferMinutes], ['Thời hạn đánh giá (ngày)', before.reviewWindowDays, c.reviewWindowDays],
+        ['Giờ phục vụ', hours(before), hours(c)], ['Ngân hàng', before.bank.name, c.bank.name], ['Mã BIN', before.bank.bin, c.bank.bin],
+        ['Số tài khoản', before.bank.accountNumber, c.bank.accountNumber], ['Chủ tài khoản', before.bank.accountName, c.bank.accountName],
+        ['Lương cứng', before.payroll?.baseSalary, c.payroll.baseSalary, money], ['Hoa hồng (%)', before.payroll?.commissionPercent, c.payroll.commissionPercent],
+      ]),
+      listChange('Khu vực phục vụ', before.areas, c.areas),
+    ));
     return db.config;
   }),
 
@@ -1112,13 +1201,19 @@ export const mockApi = {
     requireRole(db, 'QTV');
     const now = new Date();
     const p = mockPeriod(params, now);
+    const keep = reportFilter(params);
+    const tickets = db.tickets.filter(keep);
     const at = (v) => (v ? new Date(v).getTime() : NaN);
     const within = (v, a, b) => at(v) >= a.getTime() && at(v) < b.getTime();
-    const created = db.tickets.filter((t) => within(t.createdAt, p.start, p.end));
-    const completedIn = (a, b) => db.tickets.filter((t) => t.status === STATUS.HOAN_TAT && within(t.completedAt, a, b));
+    const created = tickets.filter((t) => within(t.createdAt, p.start, p.end));
+    const completedIn = (a, b) => tickets.filter((t) => t.status === STATUS.HOAN_TAT && within(t.completedAt, a, b));
     const completed = completedIn(p.start, p.end);
     const completedPrev = completedIn(p.prevStart, p.prevEnd);
-    const forfeitedIn = (a, b) => db.tickets.filter((t) => t.deposit?.status === 'KHONG_HOAN' && within(t.deposit.settledAt, a, b));
+    const forfeitedIn = (a, b) => tickets.filter((t) => t.deposit?.status === 'KHONG_HOAN' && within(t.deposit.settledAt, a, b));
+    const onsiteHours = (list) => {
+      const spans = list.filter((t) => t.checkInAt && workDoneAt(t)).map((t) => at(workDoneAt(t)) - at(t.checkInAt));
+      return spans.length ? spans.reduce((s, x) => s + x, 0) / spans.length / 3600000 : null;
+    };
     const forfeited = forfeitedIn(p.start, p.end);
     const forfeitOf = (list) => list.reduce((s, t) => s + t.deposit.amount, 0);
     const revenueOf = (list, lost = []) => list.reduce((s, t) => s + ticketRevenue(t), 0) + forfeitOf(lost);
@@ -1135,16 +1230,19 @@ export const mockApi = {
     }
     const byStatus = Object.keys(STATUS_LABEL).map((s) => ({ status: s, count: created.filter((t) => t.status === s).length })).filter((x) => x.count);
     const byCategory = db.categories.map((c) => ({ name: c.name, count: created.filter((t) => t.categoryCode === c.code).length })).filter((x) => x.count).sort((a, b) => b.count - a.count);
-    const byTech = db.technicians.map((tech) => {
+    const byTech = db.technicians.filter((tech) => !params.techId || tech.id === params.techId).map((tech) => {
       const mine = completed.filter((t) => t.assignment?.techId === tech.id);
       return { name: db.users.find((u) => u.id === tech.userId)?.name, done: mine.length, rating: avgStars(mine), revenue: revenueOf(mine) };
     }).filter((x) => x.done);
     return {
       period: { kind: p.kind, from: p.start.toISOString(), to: new Date(last).toISOString() },
+      filter: { techId: params.techId || null, category: params.category || null, ward: params.ward || null },
       revenue: revenueOf(completed, forfeited), revenuePrev: revenueOf(completedPrev, forfeitedIn(p.prevStart, p.prevEnd)),
       forfeitedDeposits: forfeitOf(forfeited),
       done: completed.length, donePrev: completedPrev.length,
       avgHours: avgHours(completed), avgHoursPrev: avgHours(completedPrev),
+      onsiteHours: onsiteHours(completed), onsiteHoursPrev: onsiteHours(completedPrev),
+      completionRate: created.length ? (created.filter((t) => t.status === STATUS.HOAN_TAT).length / created.length) * 100 : null,
       rating: avgStars(completed),
       reviewCount: completed.filter((t) => t.review).length,
       cancelled: created.filter((t) => t.status === STATUS.DA_HUY).length,
@@ -1157,10 +1255,11 @@ export const mockApi = {
     requireRole(db, 'QTV');
     const now = new Date();
     const p = mockPeriod(params, now);
+    const keep = reportFilter(params);
     const within = (v) => Boolean(v) && new Date(v).getTime() >= p.start.getTime() && new Date(v).getTime() < p.end.getTime();
     const assignmentsOf = (t) => [...(t.assignmentLog || []), ...(t.assignment ? [t.assignment] : [])];
-    const related = (t) => within(t.createdAt) || within(t.completedAt) || assignmentsOf(t).some((a) => within(a.assignedAt))
-      || ['CHO_THANH_TOAN', 'CHO_XAC_NHAN', 'DA_THU'].includes(t.payment?.status) || within(t.deposit?.settledAt);
+    const related = (t) => keep(t) && (within(t.createdAt) || within(t.completedAt) || assignmentsOf(t).some((a) => within(a.assignedAt))
+      || ['CHO_THANH_TOAN', 'CHO_XAC_NHAN', 'DA_THU'].includes(t.payment?.status) || within(t.deposit?.settledAt));
     const amountsOf = (t) => {
       const items = t.quotes.filter((q) => q.status === 'DA_DUYET' || q.status === 'DUYET_MOT_PHAN').flatMap((q) => q.items.filter((i) => i.selected));
       const sum = (list) => list.reduce((s, i) => s + i.unitPrice * i.qty, 0);
@@ -1173,6 +1272,7 @@ export const mockApi = {
     };
     return {
       period: { kind: p.kind, from: p.start.toISOString(), to: new Date(Math.min(p.end.getTime(), now.getTime())).toISOString() },
+      filter: { techId: params.techId || null, category: params.category || null, ward: params.ward || null },
       payroll: db.config.payroll || { baseSalary: 0, commissionPercent: 0 },
       technicians: db.technicians.map((k) => ({ id: k.id, name: db.users.find((u) => u.id === k.userId)?.name || '', active: k.active })),
       tickets: db.tickets.filter(related).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((t) => ({
@@ -1187,6 +1287,8 @@ export const mockApi = {
         isWarranty: Boolean(t.isWarranty),
         techId: t.assignment?.techId ?? null,
         appointmentAt: t.assignment?.appointmentAt || t.slotStart,
+        checkInAt: t.checkInAt || null,
+        workDoneAt: workDoneAt(t),
         ...amountsOf(t),
         amount: t.payment ? ticketRevenue(t) : null,
         depositApplied: t.deposit?.status === 'DA_TRU' ? t.deposit.amount : 0,

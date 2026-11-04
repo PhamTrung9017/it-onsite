@@ -59,7 +59,7 @@ class Api:
 
     def __init__(self, client: TestClient, email: str, password: str = "123456"):
         self.client = client
-        response = client.post("/api/auth/login", json={"identifier": email, "password": password})
+        response = client.post("/api/v1/auth/login", json={"identifier": email, "password": password})
         assert response.status_code == 200, response.text
         self.tokens = response.json()
         self.user = self.tokens["user"]
@@ -69,16 +69,19 @@ class Api:
         return {"Authorization": f"Bearer {self.tokens['accessToken']}"}
 
     def get(self, path: str, **kwargs):
-        return self.client.get(f"/api{path}", headers=self.headers, **kwargs)
+        return self.client.get(f"/api/v1{path}", headers=self.headers, **kwargs)
 
     def post(self, path: str, json: dict | None = None):
-        return self.client.post(f"/api{path}", json=json or {}, headers=self.headers)
+        return self.client.post(f"/api/v1{path}", json=json or {}, headers=self.headers)
 
     def put(self, path: str, json: dict):
-        return self.client.put(f"/api{path}", json=json, headers=self.headers)
+        return self.client.put(f"/api/v1{path}", json=json, headers=self.headers)
+
+    def patch(self, path: str, json: dict):
+        return self.client.patch(f"/api/v1{path}", json=json, headers=self.headers)
 
     def delete(self, path: str):
-        return self.client.delete(f"/api{path}", headers=self.headers)
+        return self.client.delete(f"/api/v1{path}", headers=self.headers)
 
     def ok(self, method: str, path: str, json: dict | None = None):
         response = getattr(self, method)(path, json) if json is not None else getattr(self, method)(path)

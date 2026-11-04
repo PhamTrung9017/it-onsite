@@ -4,7 +4,7 @@ Giao diện web của IT OnSite, xây dựng bằng React 18 và Vite 5. Khách 
 
 Giao diện chạy được theo hai cách:
 
-- **Gọi backend thật** (`src/services/http`): đặt `VITE_API_URL=/api`. Vite chuyển tiếp `/api` và `/media` tới backend ở `VITE_PROXY_TARGET` (mặc định http://localhost:8000).
+- **Gọi backend thật** (`src/services/http`): đặt `VITE_API_URL=/api/v1`. Vite chuyển tiếp `/api` và `/media` tới backend ở `VITE_PROXY_TARGET` (mặc định http://localhost:8000).
 - **Dữ liệu giả lập** (`src/services/mock`): để trống `VITE_API_URL`. Dữ liệu lưu trong `localStorage` của trình duyệt, áp dụng cùng máy trạng thái và quy tắc nghiệp vụ như backend; dùng để trình bày giao diện khi không có máy chủ.
 
 ## Chạy thử

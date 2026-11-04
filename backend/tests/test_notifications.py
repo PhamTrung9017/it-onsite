@@ -9,7 +9,7 @@ from app.services.common import notify
 
 def test_telegram_link_and_webhook(client, khach, monkeypatch):
     assert khach.post("/me/telegram-link").status_code == 503
-    assert client.get("/api/catalog").json()["features"]["telegram"] is False
+    assert client.get("/api/v1/catalog").json()["features"]["telegram"] is False
 
     settings = get_settings()
     monkeypatch.setattr(settings, "telegram_bot_token", "token")
@@ -19,8 +19,8 @@ def test_telegram_link_and_webhook(client, khach, monkeypatch):
     code = url.split("start=")[1]
 
     update = {"message": {"text": f"/start {code}", "chat": {"id": 123456}}}
-    assert client.post("/api/telegram/webhook", json=update, headers={"X-Telegram-Bot-Api-Secret-Token": "sai"}).status_code == 403
-    assert client.post("/api/telegram/webhook", json=update, headers={"X-Telegram-Bot-Api-Secret-Token": "bi-mat"}).status_code == 200
+    assert client.post("/api/v1/telegram/webhook", json=update, headers={"X-Telegram-Bot-Api-Secret-Token": "sai"}).status_code == 403
+    assert client.post("/api/v1/telegram/webhook", json=update, headers={"X-Telegram-Bot-Api-Secret-Token": "bi-mat"}).status_code == 200
     assert khach.ok("get", "/auth/me")["telegramLinked"] is True
 
 

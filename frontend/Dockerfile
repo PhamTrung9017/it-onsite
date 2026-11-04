@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ARG VITE_API_URL=/api
+ARG VITE_API_URL=/api/v1
 ARG VITE_DEMO_ACCOUNTS=false
 ENV VITE_API_URL=$VITE_API_URL VITE_DEMO_ACCOUNTS=$VITE_DEMO_ACCOUNTS
 RUN npm run build

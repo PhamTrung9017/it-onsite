@@ -30,7 +30,7 @@ export default defineConfig({
     command: backend
       ? `npx vite build --outDir dist-e2e && npx vite preview --outDir dist-e2e --port ${port} --strictPort`
       : `npm run build && npm run preview -- --port ${port} --strictPort`,
-    env: backend ? { VITE_API_URL: '/api' } : {},
+    env: backend ? { VITE_API_URL: '/api/v1' } : {},
     url: `http://localhost:${port}`,
     reuseExistingServer: !backend,
     timeout: 120_000,

@@ -47,7 +47,7 @@ backend/
 └── tests/
 ```
 
-Mọi thay đổi trạng thái phiếu đi qua một hàm duy nhất `services/common.py: transition`, hàm này kiểm tra chuyển trạng thái hợp lệ, tăng `version`, ghi lịch sử, ghi nhật ký (NFR-08) và gửi thông báo.
+Mọi thay đổi trạng thái phiếu đi qua một hàm duy nhất `services/common.py: transition`, hàm này kiểm tra chuyển trạng thái hợp lệ, tăng `version`, ghi lịch sử, ghi nhật ký (NFR-08) và gửi thông báo. Sửa bảng giá, linh kiện, kỹ thuật viên và cấu hình được ghi nhật ký kèm giá trị cũ → mới (`services/changes.py`).
 
 ## Quy tắc nghiệp vụ
 
@@ -69,7 +69,7 @@ Mọi thay đổi trạng thái phiếu đi qua một hàm duy nhất `services/
 
 ## Endpoint chính
 
-Tất cả có tiền tố `/api`. Xác thực bằng `Authorization: Bearer <accessToken>`; access token sống 15 phút, refresh token 7 ngày và chỉ dùng một lần.
+Tất cả có tiền tố `/api/v1`. Xác thực bằng `Authorization: Bearer <accessToken>`; access token sống 15 phút, refresh token 7 ngày và chỉ dùng một lần.
 
 | Nhóm | Endpoint | Use case |
 |---|---|---|
@@ -80,7 +80,7 @@ Tất cả có tiền tố `/api`. Xác thực bằng `Authorization: Bearer <ac
 | Kỹ thuật viên | `GET /tech/jobs`, `GET /tech/profile`, `POST /tickets/{id}/assignment/response`, `/check-in`, `/quotes`, `/onsite-code`, `/onsite-code/confirm`, `PUT /tickets/{id}/checklist`, `POST/DELETE /tickets/{id}/photos`, `POST /tickets/{id}/complete`, `/payment/cash-received` | UC09, UC10, UC12, UC14 |
 | Điều phối | `GET /dispatch/board`, `POST /tickets/{id}/receive`, `GET /tickets/{id}/technician-suggestions`, `POST /tickets/{id}/assign`, `GET /deposits`, `POST /tickets/{id}/deposit/confirm`, `/deposit/refund`, `GET /payments`, `POST /tickets/{id}/payment/confirm`, `/payment/reconcile`, `GET /warranty-claims`, `POST /warranty-claims/{id}/decision` | UC05, UC08, UC14, UC15 |
 | Thông báo | `GET /notifications`, `POST /notifications/read` | UC17 |
-| Quản trị | `GET /admin/overview`, `PUT /admin/services`, `/admin/parts`, `/admin/technicians`, `/admin/users/{id}/roles`, `POST /admin/users`, `PUT /admin/config`, `GET /admin/reports?days=` hoặc `?month=`, `GET /admin/reports/export?days=` hoặc `?month=` | UC18–UC23 |
+| Quản trị | `GET /admin/overview`, `PUT /admin/services`, `/admin/parts`, `/admin/technicians`, `/admin/users/{id}/roles`, `POST /admin/users`, `PUT /admin/config`, `GET /admin/reports`, `GET /admin/reports/export` (kỳ `days=`, `month=` hoặc `from=`&`to=`; lọc `techId=`, `category=`, `ward=`) | UC18–UC23 |
 
 Lỗi nghiệp vụ trả về `{"detail": "<thông báo tiếng Việt>"}` với mã 400, 401, 403, 404, 409 hoặc 429.
 
@@ -94,5 +94,5 @@ Chạy cùng tiến trình API (tắt bằng `BACKGROUND_JOBS=false`):
 ## Dịch vụ bên ngoài
 
 - **Gemini API**: đặt `GEMINI_API_KEY`. Mô tả sự cố được lọc số điện thoại, email, mật khẩu, số nhà trước khi gửi (NFR-10); quá 10 giây thì bỏ qua (NFR-03); kết quả sai định dạng thì gửi lại một lần (UC05 luồng 3a). Không có khóa thì hệ thống phân loại theo từ khóa.
-- **Telegram**: đặt `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, rồi đăng ký webhook `https://<tên miền>/api/telegram/webhook` với `secret_token` bằng `TELEGRAM_WEBHOOK_SECRET`. Người dùng bấm liên kết từ `POST /me/telegram-link` để gắn tài khoản.
+- **Telegram**: đặt `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, rồi đăng ký webhook `https://<tên miền>/api/v1/telegram/webhook` với `secret_token` bằng `TELEGRAM_WEBHOOK_SECRET`. Người dùng bấm liên kết từ `POST /me/telegram-link` để gắn tài khoản.
 - **Email**: đặt `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
