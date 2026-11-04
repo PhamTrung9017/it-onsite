@@ -5,15 +5,15 @@ from app.api.deps import CurrentUser, Db, presenter
 from app.models import Category, Service
 from app.schemas import (
     AcceptanceBody,
+    CancelBody,
     ClassifyBody,
     CreateTicketBody,
     QuoteDecisionBody,
-    ReasonBody,
     RescheduleBody,
     ReviewBody,
     WarrantyClaimBody,
 )
-from app.services import ai, tickets
+from app.services import ai, deposits, tickets
 from app.services.common import load_config, require_roles
 from app.services.present import category_json, device_json, iso
 
@@ -88,8 +88,8 @@ def get_ticket(ticket_id: str, user: CurrentUser, db: Db) -> dict:
 
 
 @router.post("/tickets/{ticket_id}/cancel")
-def cancel(ticket_id: str, body: ReasonBody, user: CurrentUser, db: Db) -> dict:
-    ticket = tickets.cancel_ticket(db, user, ticket_id, body.reason)
+def cancel(ticket_id: str, body: CancelBody, user: CurrentUser, db: Db) -> dict:
+    ticket = tickets.cancel_ticket(db, user, ticket_id, body.reason, body.charge_customer)
     db.commit()
     return presenter(db, user).ticket(ticket)
 
@@ -111,6 +111,19 @@ def decide_quote(ticket_id: str, quote_id: int, body: QuoteDecisionBody, user: C
 @router.post("/tickets/{ticket_id}/acceptance")
 def acceptance(ticket_id: str, body: AcceptanceBody, user: CurrentUser, db: Db) -> dict:
     ticket = tickets.accept_work(db, user, ticket_id, body.ok, body.reason)
+    db.commit()
+    return presenter(db, user).ticket(ticket)
+
+
+@router.get("/tickets/{ticket_id}/deposit")
+def deposit(ticket_id: str, user: CurrentUser, db: Db) -> dict:
+    info = deposits.get_deposit(db, user, ticket_id)
+    return {**info, "deadline": iso(info["deadline"])}
+
+
+@router.post("/tickets/{ticket_id}/deposit/transfer")
+def report_deposit(ticket_id: str, user: CurrentUser, db: Db) -> dict:
+    ticket = deposits.report_transfer(db, user, ticket_id)
     db.commit()
     return presenter(db, user).ticket(ticket)
 

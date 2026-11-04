@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CalendarClock, Check, MapPin, RefreshCw, Search, Star, UserCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CalendarClock, Check, MapPin, RefreshCw, Search, Star, UserCheck, XCircle } from 'lucide-react';
 import { useAction, useLoad } from '../../hooks/useApi.js';
 import { useNotifications } from '../../context/AppContext.jsx';
 import { api } from '../../services/api.js';
 import { Alert, Badge, Button, Card, Empty, ErrorState, Field, Loading, Modal, PageHead, StatusBadge } from '../../components/ui.jsx';
 import { AiResult, TicketTimeline } from '../../components/ticket.jsx';
-import { BUSY_STATUSES, STATUS } from '../../lib/ticketStatus.js';
+import { BUSY_STATUSES, CANCELLABLE, DEPOSIT_STATUS_LABEL, DEPOSIT_STATUS_TONE, STATUS } from '../../lib/ticketStatus.js';
 import { URGENCY_LABEL } from '../../lib/classifier.js';
-import { combineDateTime, formatDateTime, formatTime, relativeDay, timeAgo, timeSlots, toDateInput } from '../../lib/format.js';
+import { combineDateTime, formatDateTime, formatTime, money, relativeDay, timeAgo, timeSlots, toDateInput } from '../../lib/format.js';
 
 const COLUMNS = [
   { key: 'new', title: 'Phiếu mới', match: (t) => t.status === STATUS.MOI },
@@ -16,6 +16,7 @@ const COLUMNS = [
   { key: 'end', title: 'Thanh toán, kết thúc', match: (t) => [STATUS.CHO_THANH_TOAN, STATUS.HOAN_TAT, STATUS.DA_HUY].includes(t.status) },
 ];
 const URG_ORDER = { CAO: 0, TRUNG_BINH: 1, THAP: 2 };
+const DEPOSIT_SHORT = { CHO_THANH_TOAN: 'Chưa trả phí giữ lịch', CHO_XAC_NHAN: 'Khách báo đã chuyển', DA_XAC_NHAN: 'Đã nhận phí giữ lịch' };
 
 function TicketCard({ t, selected, onSelect }) {
   const at = t.assignment?.appointmentAt || t.slotStart;
@@ -28,7 +29,9 @@ function TicketCard({ t, selected, onSelect }) {
       <div className="m"><span className="mono">{t.id.slice(-12)}</span>·<span>{t.ward}</span></div>
       <div className="m"><CalendarClock size={13} aria-hidden />{relativeDay(at)} {formatTime(at)}</div>
       {t.technician && t.status !== STATUS.MOI && t.status !== STATUS.DA_TIEP_NHAN && <div className="m"><UserCheck size={13} aria-hidden />{t.technician.name}</div>}
+      {t.status === STATUS.MOI && DEPOSIT_SHORT[t.deposit?.status] && <Badge tone={DEPOSIT_STATUS_TONE[t.deposit.status]} plain>{DEPOSIT_SHORT[t.deposit.status]}</Badge>}
       {t.status === STATUS.MOI && t.aiResult?.state === 'low_confidence' && <Badge tone="warning" plain>AI chưa chắc chắn</Badge>}
+      {t.status === STATUS.DA_HUY && t.deposit?.status === 'CHO_HOAN' && <Badge tone="danger" plain>Cần hoàn phí giữ lịch</Badge>}
       {t.status === STATUS.DA_PHAN_CONG && !t.assignment?.result && <Badge tone="accent" plain>Chờ KTV phản hồi</Badge>}
       {![STATUS.MOI, STATUS.DA_TIEP_NHAN].includes(t.status) && <StatusBadge status={t.status} />}
     </button>
@@ -52,6 +55,7 @@ export default function BoardPage() {
   const [suggest, setSuggest] = useState(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const [chargeCustomer, setChargeCustomer] = useState(false);
 
   const tickets = useMemo(() => {
     if (!data) return [];
@@ -99,6 +103,7 @@ export default function BoardPage() {
     }
   }
 
+  const forfeitable = Boolean(sel && sel.status !== STATUS.MOI && CANCELLABLE.includes(sel.status) && sel.deposit?.status === 'DA_XAC_NHAN');
   const counts = Object.fromEntries(COLUMNS.map((c) => [c.key, tickets.filter(c.match).length]));
   const categories = data.catalog.categories;
 
@@ -134,6 +139,9 @@ export default function BoardPage() {
                     <dt>Địa chỉ</dt><dd className="row-sm"><MapPin size={14} aria-hidden />{sel.address}, phường {sel.ward}</dd>
                     <dt>Khách muốn</dt><dd>{formatDateTime(sel.slotStart)}</dd>
                     <dt>Tạo lúc</dt><dd>{formatDateTime(sel.createdAt)} ({timeAgo(sel.createdAt)})</dd>
+                    <dt>Phí giữ lịch</dt><dd>{sel.deposit
+                      ? <span className="row-sm wrap">{money(sel.deposit.amount)}<Badge tone={DEPOSIT_STATUS_TONE[sel.deposit.status]} plain>{DEPOSIT_STATUS_LABEL[sel.deposit.status]}</Badge></span>
+                      : 'Không thu (phiếu bảo hành)'}</dd>
                   </dl>
                 </div>
               </Card>
@@ -141,13 +149,24 @@ export default function BoardPage() {
               {sel.status === STATUS.MOI && (
                 <Card title="1. Tiếp nhận và xác nhận loại sự cố">
                   <div className="stack">
+                    {sel.deposit && sel.deposit.status !== 'DA_XAC_NHAN' && (
+                      <Alert tone="warning" title={sel.deposit.status === 'CHO_XAC_NHAN' ? 'Khách báo đã chuyển phí giữ lịch' : 'Khách chưa chuyển phí giữ lịch'}>
+                        <div className="stack-sm">
+                          <span>
+                            Đối chiếu sao kê khoản {money(sel.deposit.amount)}, nội dung <span className="mono">ITONSITE {sel.id.replace(/-/g, '')} GL</span>, rồi xác nhận để tiếp nhận phiếu.
+                            {sel.deposit.status === 'CHO_THANH_TOAN' && ` Quá ${formatTime(sel.deposit.deadline)} chưa chuyển, phiếu tự hủy.`}
+                          </span>
+                          <div><Button size="sm" icon={BadgeCheck} loading={busy === 'dep'} onClick={() => act('dep', () => api.confirmDeposit(sel.id), 'Đã xác nhận nhận phí giữ lịch.')}>Đã nhận phí giữ lịch</Button></div>
+                        </div>
+                      </Alert>
+                    )}
                     <div style={{ padding: 14, background: 'var(--bg)', borderRadius: 12 }}><span className="section-title">Gợi ý tự động</span><div style={{ marginTop: 8 }}><AiResult ai={sel.aiResult} categories={categories} /></div></div>
                     <div className="grid-2">
                       <Field label="Loại sự cố" htmlFor="bc"><select id="bc" className="select" value={cat} onChange={(e) => setCat(e.target.value)}>{categories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</select></Field>
                       <Field label="Mức khẩn" htmlFor="bu"><select id="bu" className="select" value={urg} onChange={(e) => setUrg(e.target.value)}>{Object.entries(URGENCY_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
                     </div>
                     <div className="row wrap">
-                      <Button icon={Check} loading={busy === 'recv'} onClick={() => act('recv', () => api.receiveTicket(sel.id, { categoryCode: cat, urgency: urg, version: sel.version }), 'Đã tiếp nhận phiếu.')}>Tiếp nhận</Button>
+                      <Button icon={Check} disabled={Boolean(sel.deposit) && sel.deposit.status !== 'DA_XAC_NHAN'} loading={busy === 'recv'} onClick={() => act('recv', () => api.receiveTicket(sel.id, { categoryCode: cat, urgency: urg, version: sel.version }), 'Đã tiếp nhận phiếu.')}>Tiếp nhận</Button>
                       <Button variant="danger" icon={XCircle} onClick={() => setCancelOpen(true)}>Hủy phiếu</Button>
                     </div>
                   </div>
@@ -195,13 +214,32 @@ export default function BoardPage() {
               {sel.status === STATUS.DA_PHAN_CONG && !sel.assignment?.result && (
                 <Alert title={`Đang chờ ${sel.technician?.name} phản hồi`}>Hạn phản hồi {formatTime(sel.assignment.deadline)}. Quá hạn, hệ thống tự thu hồi và đưa phiếu về cột Chờ phân công.</Alert>
               )}
+              {[STATUS.DA_PHAN_CONG, STATUS.KTV_DA_NHAN].includes(sel.status) && (
+                <Card title="Hủy thay khách">
+                  <div className="stack-sm">
+                    <p className="small muted">Dùng khi khách gọi điện yêu cầu hủy, khách vắng mặt khi kỹ thuật viên đến (đã chờ 15 phút và gọi điện), hoặc cửa hàng không thể phục vụ.</p>
+                    <div><Button variant="danger" size="sm" icon={XCircle} onClick={() => setCancelOpen(true)}>Hủy phiếu</Button></div>
+                  </div>
+                </Card>
+              )}
+              {sel.status === STATUS.DA_HUY && sel.deposit?.status === 'CHO_HOAN' && (
+                <Alert tone="warning" title="Phí giữ lịch cần hoàn">Phiếu đã hủy, cần chuyển trả {money(sel.deposit.amount)} cho khách. Xử lý ở màn hình Thanh toán.</Alert>
+              )}
             </div>
             <Card title="Tiến trình"><TicketTimeline ticket={sel} /></Card>
           </div>
         )}
       </div>
       <Modal open={cancelOpen} title={`Hủy phiếu ${sel?.id || ''}`} onClose={() => setCancelOpen(false)}
-        footer={<><Button variant="outline" onClick={() => setCancelOpen(false)}>Đóng</Button><Button variant="danger-solid" loading={busy === 'cancel'} onClick={async () => { if (await act('cancel', () => api.cancelTicket(sel.id, { reason }), 'Đã hủy phiếu.')) { setCancelOpen(false); setReason(''); } }}>Hủy phiếu</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setCancelOpen(false)}>Đóng</Button><Button variant="danger-solid" loading={busy === 'cancel'} onClick={async () => { if (await act('cancel', () => api.cancelTicket(sel.id, { reason, chargeCustomer: forfeitable && chargeCustomer }), 'Đã hủy phiếu.')) { setCancelOpen(false); setReason(''); setChargeCustomer(false); } }}>Hủy phiếu</Button></>}>
+        {forfeitable && (
+          <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: '0 0 12px' }}>
+            <legend className="small strong" style={{ marginBottom: 6 }}>Phí giữ lịch {money(sel.deposit.amount)}</legend>
+            <label className="row-sm small"><input type="radio" name="charge" checked={!chargeCustomer} onChange={() => setChargeCustomer(false)} />Cửa hàng hủy: hoàn lại cho khách</label>
+            <label className="row-sm small"><input type="radio" name="charge" checked={chargeCustomer} onChange={() => setChargeCustomer(true)} />Khách yêu cầu hủy hoặc vắng mặt: không hoàn</label>
+          </fieldset>
+        )}
+        {sel?.status === STATUS.MOI && sel.deposit && sel.deposit.status !== 'CHO_THANH_TOAN' && <Alert>Phiếu chưa tiếp nhận nên phí giữ lịch được hoàn cho khách.</Alert>}
         <Field label="Lý do (gửi cho khách)" htmlFor="cr"><textarea id="cr" className="textarea" style={{ minHeight: 80 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ví dụ: ngoài khu vực phục vụ, khách yêu cầu hủy qua điện thoại" /></Field>
       </Modal>
     </>

@@ -54,8 +54,8 @@ Mọi thay đổi trạng thái phiếu đi qua một hàm duy nhất `services/
 | Mã | Cài đặt |
 |---|---|
 | BR-01, BR-13 | Đơn giá cố định trên báo giá lúc lập; phát sinh khi đang làm phải lập báo giá bổ sung (`services/technician.py: create_quote`) |
-| BR-02 | Phí khảo sát chỉ thu khi khách từ chối báo giá chính (`domain/rules.py: amount_due`) |
-| BR-03 | Hủy, đổi lịch miễn phí trước mốc cấu hình, sát giờ tính phí khảo sát, không hủy sau check-in (`cancellation_policy`) |
+| BR-02 | Phí khảo sát trả trước làm phí giữ lịch, quá hạn chưa trả thì phiếu tự hủy; điều phối viên xác nhận đã nhận mới tiếp nhận phiếu; trừ vào tổng tiền khi khách duyệt báo giá, là phí khảo sát khi khách từ chối (`services/deposits.py`, `domain/rules.py: amount_due`) |
+| BR-03 | Hủy khi cửa hàng chưa tiếp nhận thì hoàn phí giữ lịch; hủy sau đó do khách (kể cả vắng mặt) thì không hoàn, cửa hàng hủy thì hoàn; không hủy sau check-in; khách tự đổi lịch khi còn đủ thời gian trước giờ hẹn (`cancellation_policy`, `reschedule_policy`) |
 | BR-04 | Không phân công trùng lịch, tính cả thời lượng dịch vụ và thời gian đệm di chuyển (`has_conflict`) |
 | BR-05 | Gợi ý kỹ thuật viên: đúng kỹ năng → đúng khu vực → ít việc trong ngày → đánh giá cao (`rank_technicians`); kỹ thuật viên trùng lịch hoặc ngoài lịch làm việc (UC18, `off_duty`) xếp cuối và không phân công được |
 | BR-06 | Quá hạn phản hồi thì tự thu hồi phân công (`services/dispatch.py: sweep_overdue_assignments`) |
@@ -76,9 +76,9 @@ Tất cả có tiền tố `/api`. Xác thực bằng `Authorization: Bearer <ac
 | Xác thực | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/change-password`, `GET /auth/me` | UC01 |
 | Hồ sơ | `PATCH /me`, `GET/POST /me/devices`, `DELETE /me/devices/{id}`, `GET /me/export`, `POST /me/deletion-request`, `POST /me/telegram-link` | UC02, NFR-10 |
 | Danh mục | `GET /catalog`, `GET /parts` | UC03 |
-| Khách hàng | `POST /classify`, `POST /tickets`, `GET /tickets/mine`, `GET /tickets/{id}`, `POST /tickets/{id}/cancel`, `/reschedule`, `/quotes/{qid}/decision`, `/acceptance`, `GET /tickets/{id}/payment`, `POST /tickets/{id}/payment/transfer`, `/payment/cash`, `/review`, `GET /warranties/mine`, `POST /warranty-claims` | UC04–UC07, UC11, UC13–UC16 |
+| Khách hàng | `POST /classify`, `POST /tickets`, `GET /tickets/mine`, `GET /tickets/{id}`, `POST /tickets/{id}/cancel`, `/reschedule`, `/quotes/{qid}/decision`, `/acceptance`, `GET /tickets/{id}/deposit`, `POST /tickets/{id}/deposit/transfer`, `GET /tickets/{id}/payment`, `POST /tickets/{id}/payment/transfer`, `/payment/cash`, `/review`, `GET /warranties/mine`, `POST /warranty-claims` | UC04–UC07, UC11, UC13–UC16 |
 | Kỹ thuật viên | `GET /tech/jobs`, `GET /tech/profile`, `POST /tickets/{id}/assignment/response`, `/check-in`, `/quotes`, `/onsite-code`, `/onsite-code/confirm`, `PUT /tickets/{id}/checklist`, `POST/DELETE /tickets/{id}/photos`, `POST /tickets/{id}/complete`, `/payment/cash-received` | UC09, UC10, UC12, UC14 |
-| Điều phối | `GET /dispatch/board`, `POST /tickets/{id}/receive`, `GET /tickets/{id}/technician-suggestions`, `POST /tickets/{id}/assign`, `GET /payments`, `POST /tickets/{id}/payment/confirm`, `/payment/reconcile`, `GET /warranty-claims`, `POST /warranty-claims/{id}/decision` | UC05, UC08, UC14, UC15 |
+| Điều phối | `GET /dispatch/board`, `POST /tickets/{id}/receive`, `GET /tickets/{id}/technician-suggestions`, `POST /tickets/{id}/assign`, `GET /deposits`, `POST /tickets/{id}/deposit/confirm`, `/deposit/refund`, `GET /payments`, `POST /tickets/{id}/payment/confirm`, `/payment/reconcile`, `GET /warranty-claims`, `POST /warranty-claims/{id}/decision` | UC05, UC08, UC14, UC15 |
 | Thông báo | `GET /notifications`, `POST /notifications/read` | UC17 |
 | Quản trị | `GET /admin/overview`, `PUT /admin/services`, `/admin/parts`, `/admin/technicians`, `/admin/users/{id}/roles`, `POST /admin/users`, `PUT /admin/config`, `GET /admin/reports?days=` hoặc `?month=`, `GET /admin/reports/export?days=` hoặc `?month=` | UC18–UC23 |
 
@@ -88,7 +88,7 @@ Lỗi nghiệp vụ trả về `{"detail": "<thông báo tiếng Việt>"}` vớ
 
 Chạy cùng tiến trình API (tắt bằng `BACKGROUND_JOBS=false`):
 
-- Mỗi 30 giây thu hồi phân công quá hạn phản hồi (BR-06). Bảng điều phối cũng kiểm tra mỗi lần tải.
+- Mỗi 30 giây thu hồi phân công quá hạn phản hồi (BR-06) và hủy phiếu quá hạn chưa trả phí giữ lịch (BR-02). Bảng điều phối cũng kiểm tra mỗi lần tải.
 - Mỗi 15 giây gửi tin trong hàng đợi `outbox` qua Telegram và email. Gửi lỗi thì thử lại sau 2, 4, 8 phút, tối đa 3 lần gửi lại (NFR-14). Khi chưa cấu hình SMTP, nội dung email được ghi ra log.
 
 ## Dịch vụ bên ngoài

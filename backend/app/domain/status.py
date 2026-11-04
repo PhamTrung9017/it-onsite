@@ -67,3 +67,19 @@ def can_transition(current: str, target: str) -> bool:
 
 def is_closed(status: str) -> bool:
     return Status(status) in CLOSED_STATUSES
+
+
+class DepositStatus(StrEnum):
+    """Trạng thái phí giữ lịch khách trả trước khi gửi yêu cầu (BR-02, BR-03)."""
+
+    CHO_THANH_TOAN = "CHO_THANH_TOAN"  # khách chưa chuyển khoản
+    CHO_XAC_NHAN = "CHO_XAC_NHAN"  # khách báo đã chuyển, chờ điều phối viên đối chiếu
+    DA_XAC_NHAN = "DA_XAC_NHAN"  # cửa hàng đã nhận tiền
+    DA_TRU = "DA_TRU"  # đã trừ vào số tiền thanh toán khi phiếu hoàn tất
+    KHONG_HOAN = "KHONG_HOAN"  # khách hủy sau khi cửa hàng tiếp nhận hoặc vắng mặt
+    CHO_HOAN = "CHO_HOAN"  # phiếu hủy khi được hoàn, chờ điều phối viên chuyển trả
+    DA_HOAN = "DA_HOAN"  # đã chuyển trả cho khách
+    KHONG_PHAT_SINH = "KHONG_PHAT_SINH"  # phiếu hủy khi khách chưa chuyển tiền
+
+
+DEPOSIT_RECEIVED = {DepositStatus.CHO_XAC_NHAN, DepositStatus.DA_XAC_NHAN}

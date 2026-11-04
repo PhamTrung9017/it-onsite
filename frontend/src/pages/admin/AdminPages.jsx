@@ -257,8 +257,9 @@ export function ConfigPage() {
       <div className="stack">
         <Card title="Phí và thời hạn">
           <div className="grid-3">
-            {num('surveyFee', 'Phí khảo sát (đồng)', 'Chỉ thu khi khách từ chối báo giá (BR-02)', 1000)}
-            {num('freeCancelHours', 'Hủy, đổi lịch miễn phí trước (giờ)', 'BR-03')}
+            {num('surveyFee', 'Phí khảo sát (đồng)', 'Khách trả trước làm phí giữ lịch, trừ vào tổng tiền (BR-02)', 1000)}
+            {num('depositMinutes', 'Thời hạn trả phí giữ lịch (phút)', 'Quá hạn chưa chuyển, phiếu tự hủy')}
+            {num('freeCancelHours', 'Khách tự đổi lịch trước (giờ)', 'Sát giờ hơn, khách gọi cửa hàng (BR-03)')}
             {num('techResponseMinutes', 'Thời hạn KTV phản hồi (phút)', 'Quá hạn tự thu hồi phân công (BR-06)')}
             {num('travelBufferMinutes', 'Thời gian đệm di chuyển (phút)', 'Dùng khi kiểm tra trùng lịch (BR-04)')}
             {num('reviewWindowDays', 'Thời hạn đánh giá (ngày)', 'BR-10')}

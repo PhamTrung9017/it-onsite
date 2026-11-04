@@ -6,8 +6,8 @@ from pydantic import AwareDatetime
 from app.api.deps import CurrentUser, Db, presenter
 from app.domain.rules import warranty_status
 from app.models import Device, User
-from app.schemas import AssignBody, ClaimDecisionBody, ReceiveBody
-from app.services import dispatch
+from app.schemas import AssignBody, ClaimDecisionBody, ReceiveBody, RefundBody
+from app.services import deposits, dispatch
 from app.services.common import utcnow
 from app.services.present import device_json, tech_json, user_json
 
@@ -59,6 +59,26 @@ def assign(ticket_id: str, body: AssignBody, user: CurrentUser, db: Db) -> dict:
 def payments(user: CurrentUser, db: Db) -> list[dict]:
     p = presenter(db, None)
     return [p.ticket(t) for t in dispatch.list_payments(db, user)]
+
+
+@router.get("/deposits")
+def deposit_list(user: CurrentUser, db: Db) -> list[dict]:
+    p = presenter(db, None)
+    return [p.ticket(t) for t in deposits.list_deposits(db, user)]
+
+
+@router.post("/tickets/{ticket_id}/deposit/confirm")
+def confirm_deposit(ticket_id: str, user: CurrentUser, db: Db) -> dict:
+    ticket = deposits.confirm(db, user, ticket_id)
+    db.commit()
+    return presenter(db, user).ticket(ticket)
+
+
+@router.post("/tickets/{ticket_id}/deposit/refund")
+def refund_deposit(ticket_id: str, body: RefundBody, user: CurrentUser, db: Db) -> dict:
+    ticket = deposits.refund(db, user, ticket_id, body.received)
+    db.commit()
+    return presenter(db, user).ticket(ticket)
 
 
 @router.post("/tickets/{ticket_id}/payment/confirm")

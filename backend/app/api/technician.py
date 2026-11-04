@@ -5,6 +5,7 @@ from app.api.deps import CurrentUser, Db, presenter
 from app.models import Category, User
 from app.schemas import AssignmentResponseBody, ChecklistBody, CreateQuoteBody, OnsiteCodeBody, PhotosBody
 from app.services import technician
+from app.services.common import ticket_revenue
 from app.services.present import category_json, iso, tech_json, user_json
 
 router = APIRouter(tags=["Kỹ thuật viên"])
@@ -26,7 +27,7 @@ def my_profile(user: CurrentUser, db: Db) -> dict:
         "categories": [category_json(c) for c in db.scalars(select(Category).order_by(Category.position))],
         "stats": {
             "doneMonth": len(data["doneMonth"]),
-            "revenueMonth": sum(t.payment.amount for t in data["doneMonth"] if t.payment),
+            "revenueMonth": sum(ticket_revenue(t) for t in data["doneMonth"]),
             "doneTotal": len(data["done"]),
         },
         "reviews": [

@@ -19,11 +19,12 @@ from app.core.security import hash_password
 from app.db import Base, SessionLocal
 from app.domain.areas import WARDS
 from app.domain.rules import BusinessConfig
-from app.domain.status import Status
+from app.domain.status import DepositStatus, Status
 from app.models import (
     Assignment,
     Category,
     DailyCounter,
+    Deposit,
     Device,
     Notification,
     Part,
@@ -40,7 +41,7 @@ from app.models import (
     User,
     Warranty,
 )
-from app.services.common import utcnow
+from app.services.common import SYSTEM_NAME, money, utcnow
 from app.services.media import media_root
 
 MIN = timedelta(minutes=1)
@@ -51,6 +52,7 @@ SAMPLE_PHOTO = "/media/mau.svg"
 DEFAULT_CONFIG = BusinessConfig(
     survey_fee=50000,
     free_cancel_hours=2,
+    deposit_minutes=30,
     tech_response_minutes=15,
     travel_buffer_minutes=30,
     review_window_days=7,
@@ -69,13 +71,13 @@ DEFAULT_CONFIG = BusinessConfig(
 SERVICES = {
     "win": ("Cài đặt Windows và driver đầy đủ", "CAI_HDH", 250000, 90, 7),
     "office": ("Cài đặt phần mềm văn phòng", "PHAN_MEM", 100000, 45, 7),
-    "virus": ("Diệt virus và làm sạch hệ thống", "VIRUS", 150000, 60, 30),
-    "mang": ("Khắc phục sự cố mạng, Wi-Fi", "MANG", 150000, 60, 7),
+    "virus": ("Diệt virus và làm sạch hệ thống", "VIRUS", 200000, 60, 30),
+    "mang": ("Khắc phục sự cố mạng, Wi-Fi", "MANG", 200000, 60, 7),
     "toiuu": ("Tối ưu máy chạy chậm", "MAY_CHAM", 150000, 60, 14),
-    "vesinh": ("Vệ sinh và tra keo tản nhiệt laptop", "MAY_CHAM", 180000, 60, 30),
-    "nguon": ("Kiểm tra, sửa lỗi không lên nguồn", "NGUON", 200000, 90, 30),
-    "dulieu": ("Khôi phục dữ liệu ổ cứng, USB", "DU_LIEU", 400000, 120, 0),
-    "lapdat": ("Công lắp đặt, nâng cấp linh kiện", "PHAN_CUNG", 120000, 45, 30),
+    "vesinh": ("Vệ sinh và tra keo tản nhiệt laptop", "MAY_CHAM", 250000, 60, 30),
+    "nguon": ("Kiểm tra, sửa lỗi không lên nguồn", "NGUON", 300000, 90, 30),
+    "dulieu": ("Khôi phục dữ liệu ổ cứng, USB", "DU_LIEU", 500000, 120, 0),
+    "lapdat": ("Công lắp đặt, nâng cấp linh kiện", "PHAN_CUNG", 150000, 45, 30),
     "kiemtra": ("Kiểm tra tổng quát", "KHAC", 100000, 60, 0),
 }
 
@@ -102,6 +104,8 @@ PARTS = {
 }
 
 DEMO_PASSWORD = "123456"
+DEPOSIT_NOTE = f"Đã nhận phí giữ lịch {money(DEFAULT_CONFIG.survey_fee)}"
+REJECT_NOTE = "Khách từ chối báo giá, phí giữ lịch được tính là phí khảo sát"
 
 USERS = {
     "kh1": ("Nguyễn Văn Anh", "khach@demo.vn", "0909000001", ["KHACH"], "120 Nguyễn Trãi", "Bến Thành"),
@@ -301,6 +305,25 @@ class DemoBuilder:
         self.db.add(t)
         return t
 
+    def deposit(
+        self,
+        t: Ticket,
+        status: DepositStatus,
+        reported: datetime | None = None,
+        confirmed: datetime | None = None,
+        settled: datetime | None = None,
+        settled_by: str = "",
+    ) -> None:
+        t.deposit = Deposit(
+            amount=DEFAULT_CONFIG.survey_fee,
+            status=status,
+            reported_at=reported,
+            confirmed_at=confirmed,
+            confirmed_by_name=self.users["dpv1"].name if confirmed else "",
+            settled_at=settled,
+            settled_by_name=settled_by,
+        )
+
     @staticmethod
     def history(t: Ticket, steps: list[tuple]) -> None:
         for status, at, by, *note in steps:
@@ -419,16 +442,7 @@ class DemoBuilder:
                     description=f"Yêu cầu {name.lower()}.",
                 )
                 if cancelled:
-                    t.cancel = {
-                        "by": self.users[cust].id,
-                        "byName": customer_name,
-                        "reason": "Đã tự xử lý được",
-                        "fee": 0,
-                        "at": (created + 2 * HOUR).isoformat(),
-                    }
-                    self.history(
-                        t, [(Status.MOI, created, customer_name), (Status.DA_HUY, created + 2 * HOUR, customer_name, "Đã tự xử lý được")]
-                    )
+                    self.cancelled_ticket(t, rng.choice(["unpaid", "refund", "forfeit"]), customer_name)
                     continue
                 service_key = next(k for c, _, k in CATEGORIES if c == category)
                 items = [self.item("service", service_key)]
@@ -446,6 +460,8 @@ class DemoBuilder:
                         t.assignments[-1].reject_reason = "Đang xử lý phiếu khác ở xa"
                 self.assign(t, tech, appointment, created + 20 * MIN, "NHAN", created + 28 * MIN)
                 t.check_in_at = appointment
+                completed = appointment + 30 * MIN if rejected else done + 10 * MIN
+                self.deposit(t, DepositStatus.DA_TRU, created + 3 * MIN, created + 8 * MIN, completed)
                 if rejected:
                     for i in items:
                         i.selected = False
@@ -458,26 +474,30 @@ class DemoBuilder:
                     appointment + 30 * MIN,
                     reject_reason="Chi phí cao hơn dự kiến" if rejected else "",
                 )
-                amount = DEFAULT_CONFIG.survey_fee if rejected else sum(i.unit_price for i in items)
                 cash = rng.random() >= 0.55
                 reconciled = cash and day > 3
-                if not rejected:
+                if rejected:
+                    t.payment = Payment(amount=0, method=None, status="MIEN_PHI", paid_at=completed)
+                else:
                     self.photos(t, "before", "after")
                     t.acceptance = {"result": "DAT", "at": done.isoformat()}
-                completed = done + 10 * MIN
-                t.payment = Payment(
-                    amount=amount,
-                    method="TIEN_MAT" if cash else "CHUYEN_KHOAN",
-                    status=("DA_DOI_SOAT" if reconciled else "DA_THU") if cash else "DA_XAC_NHAN",
-                    paid_at=completed,
-                    confirmed_by=self.users[TECHNICIANS[tech][0]].id if cash else self.users["dpv1"].id,
-                    confirmed_by_name=tech_name if cash else dispatcher,
-                    confirmed_at=completed,
-                    reconciled_by=self.users["dpv1"].id if reconciled else None,
-                    reconciled_at=completed + DAY if reconciled else None,
-                )
+                    t.payment = Payment(
+                        amount=sum(i.unit_price for i in items) - DEFAULT_CONFIG.survey_fee,
+                        method="TIEN_MAT" if cash else "CHUYEN_KHOAN",
+                        status=("DA_DOI_SOAT" if reconciled else "DA_THU") if cash else "DA_XAC_NHAN",
+                        paid_at=completed,
+                        confirmed_by=self.users[TECHNICIANS[tech][0]].id if cash else self.users["dpv1"].id,
+                        confirmed_by_name=tech_name if cash else dispatcher,
+                        confirmed_at=completed,
+                        reconciled_by=self.users["dpv1"].id if reconciled else None,
+                        reconciled_at=completed + DAY if reconciled else None,
+                    )
                 t.completed_at = completed
-                steps = [(Status.MOI, created, customer_name), (Status.DA_TIEP_NHAN, created + 10 * MIN, dispatcher)]
+                steps = [
+                    (Status.MOI, created, customer_name),
+                    (Status.MOI, created + 8 * MIN, dispatcher, DEPOSIT_NOTE),
+                    (Status.DA_TIEP_NHAN, created + 10 * MIN, dispatcher),
+                ]
                 if missed:
                     other_name = self.users[TECHNICIANS[other][0]].name
                     note = f"{other_name} từ chối" if missed == "TU_CHOI" else f"{other_name} quá hạn phản hồi, đã thu hồi phân công"
@@ -489,14 +509,17 @@ class DemoBuilder:
                     (Status.CHO_DUYET_BAO_GIA, appointment + 20 * MIN, tech_name),
                 ]
                 if rejected:
-                    steps.append((Status.CHO_THANH_TOAN, appointment + 30 * MIN, customer_name, "Khách từ chối báo giá, thu phí khảo sát"))
+                    steps += [
+                        (Status.CHO_THANH_TOAN, completed, customer_name, REJECT_NOTE),
+                        (Status.HOAN_TAT, completed, customer_name, "Đã trừ phí giữ lịch, không phải trả thêm"),
+                    ]
                 else:
                     steps += [
                         (Status.DANG_THUC_HIEN, appointment + 30 * MIN, customer_name),
                         (Status.CHO_NGHIEM_THU, done - 10 * MIN, tech_name),
                         (Status.CHO_THANH_TOAN, done, customer_name),
+                        (Status.HOAN_TAT, completed, tech_name if cash else dispatcher),
                     ]
-                steps.append((Status.HOAN_TAT, completed, tech_name if cash else dispatcher))
                 self.history(t, steps)
                 if not rejected and rng.random() < 0.75:
                     stars = 3 if rng.random() < 0.12 else 4 if rng.random() < 0.3 else 5
@@ -504,6 +527,30 @@ class DemoBuilder:
                     t.review = Review(stars=stars, comment=comment, at=done + 2 * HOUR)
                 if not rejected:
                     self.issue_warranties(t, items, completed)
+
+    def cancelled_ticket(self, t: Ticket, case: str, customer_name: str) -> None:
+        """Phiếu hủy: quá hạn trả phí giữ lịch, khách hủy khi mới tạo (hoàn phí), khách hủy sau khi cửa hàng tiếp nhận (không hoàn)."""
+        created, dispatcher = t.created_at, self.users["dpv1"].name
+        steps = [(Status.MOI, created, customer_name)]
+        if case == "unpaid":
+            at = created + DEFAULT_CONFIG.deposit_minutes * MIN
+            self.deposit(t, DepositStatus.KHONG_PHAT_SINH, settled=at)
+            by, by_name, reason, fee = None, SYSTEM_NAME, "Quá hạn thanh toán phí giữ lịch", 0
+        elif case == "refund":
+            at = created + 20 * MIN
+            self.deposit(t, DepositStatus.DA_HOAN, created + 3 * MIN, created + 8 * MIN, at + 3 * HOUR, dispatcher)
+            steps.append((Status.MOI, created + 8 * MIN, dispatcher, DEPOSIT_NOTE))
+            by, by_name, reason, fee = t.customer_id, customer_name, "Đã tự xử lý được", 0
+        else:
+            at = created + 2 * HOUR
+            self.deposit(t, DepositStatus.KHONG_HOAN, created + 3 * MIN, created + 8 * MIN, at)
+            steps += [(Status.MOI, created + 8 * MIN, dispatcher, DEPOSIT_NOTE), (Status.DA_TIEP_NHAN, created + 10 * MIN, dispatcher)]
+            by, by_name, reason, fee = t.customer_id, customer_name, "Đổi ý, không cần sửa nữa", DEFAULT_CONFIG.survey_fee
+        t.cancel = {"by": by, "byName": by_name, "reason": reason, "fee": fee, "at": at.isoformat()}
+        steps.append((Status.DA_HUY, at, by_name, reason))
+        if case == "refund":
+            steps.append((Status.DA_HUY, at + 3 * HOUR, dispatcher, f"Đã hoàn phí giữ lịch {money(DEFAULT_CONFIG.survey_fee)}"))
+        self.history(t, steps)
 
     def live_tickets(self) -> None:
         now = self.now
@@ -533,8 +580,9 @@ class DemoBuilder:
         ]
         self.photos(t, "before", "after")
         t.acceptance = {"result": "DAT", "at": done.isoformat()}
+        self.deposit(t, DepositStatus.DA_TRU, created + 3 * MIN, created + 6 * MIN, done)
         t.payment = Payment(
-            amount=sum(i.unit_price for i in items),
+            amount=sum(i.unit_price for i in items) - DEFAULT_CONFIG.survey_fee,
             method="CHUYEN_KHOAN",
             status="DA_XAC_NHAN",
             paid_at=done + 5 * MIN,
@@ -547,6 +595,7 @@ class DemoBuilder:
             t,
             [
                 (Status.MOI, created, self.users["kh1"].name),
+                (Status.MOI, created + 6 * MIN, lan, DEPOSIT_NOTE),
                 (Status.DA_TIEP_NHAN, created + 8 * MIN, lan),
                 (Status.DA_PHAN_CONG, created + 15 * MIN, lan),
                 (Status.KTV_DA_NHAN, created + 20 * MIN, an),
@@ -571,6 +620,7 @@ class DemoBuilder:
             slot=appointment,
             description="PC bật lên quạt quay nhưng không lên hình, cần dùng gấp để làm việc.",
         )
+        self.deposit(t, DepositStatus.DA_XAC_NHAN, created + 2 * MIN, created + 3 * MIN)
         self.assign(t, "k1", appointment, created + 10 * MIN, "NHAN", created + 14 * MIN)
         t.check_in_at = appointment + 2 * MIN
         self.quote(
@@ -587,6 +637,7 @@ class DemoBuilder:
             t,
             [
                 (Status.MOI, created, self.users["kh1"].name),
+                (Status.MOI, created + 3 * MIN, lan, DEPOSIT_NOTE),
                 (Status.DA_TIEP_NHAN, created + 5 * MIN, lan),
                 (Status.DA_PHAN_CONG, created + 10 * MIN, lan),
                 (Status.KTV_DA_NHAN, created + 14 * MIN, an),
@@ -615,6 +666,7 @@ class DemoBuilder:
                 "ms": 740,
             },
         )
+        self.deposit(t, DepositStatus.CHO_XAC_NHAN, created + 4 * MIN)
         self.history(t, [(Status.MOI, created, self.users["kh1"].name)])
 
         created = now - 12 * MIN
@@ -636,6 +688,7 @@ class DemoBuilder:
                 "ms": 910,
             },
         )
+        self.deposit(t, DepositStatus.CHO_THANH_TOAN)
         self.history(t, [(Status.MOI, created, self.users["kh3"].name)])
 
         created = now - 50 * MIN
@@ -650,7 +703,15 @@ class DemoBuilder:
             slot=slot,
             description="Máy hiện thông báo đòi tiền chuộc, file Word không mở được. Cần xử lý gấp.",
         )
-        self.history(t, [(Status.MOI, created, self.users["kh2"].name), (Status.DA_TIEP_NHAN, created + 6 * MIN, lan)])
+        self.deposit(t, DepositStatus.DA_XAC_NHAN, created + 2 * MIN, created + 4 * MIN)
+        self.history(
+            t,
+            [
+                (Status.MOI, created, self.users["kh2"].name),
+                (Status.MOI, created + 4 * MIN, lan, DEPOSIT_NOTE),
+                (Status.DA_TIEP_NHAN, created + 6 * MIN, lan),
+            ],
+        )
 
         created = now - 30 * MIN
         slot = self.at(0, 15, 30) if self.at(0, 15, 30) > now + 2 * HOUR else self.at(1, 15, 30)
@@ -664,10 +725,12 @@ class DemoBuilder:
             description="Muốn cài lại Windows 11 sạch, giữ lại dữ liệu ổ D.",
         )
         self.assign(t, "k1", slot, now - 4 * MIN, None, None, now + 11 * MIN)
+        self.deposit(t, DepositStatus.DA_XAC_NHAN, created + 5 * MIN, created + 8 * MIN)
         self.history(
             t,
             [
                 (Status.MOI, created, self.users["kh4"].name),
+                (Status.MOI, created + 8 * MIN, lan, DEPOSIT_NOTE),
                 (Status.DA_TIEP_NHAN, created + 10 * MIN, lan),
                 (Status.DA_PHAN_CONG, now - 4 * MIN, lan, f"Phân công {an}"),
             ],
@@ -692,10 +755,12 @@ class DemoBuilder:
             description="Wifi trong nhà chập chờn, phòng ngủ không bắt được sóng.",
         )
         self.assign(t, "k1", slot, created + 30 * MIN, "NHAN", created + 35 * MIN)
+        self.deposit(t, DepositStatus.DA_XAC_NHAN, created + 10 * MIN, created + 15 * MIN)
         self.history(
             t,
             [
                 (Status.MOI, created, self.users["kh5"].name),
+                (Status.MOI, created + 15 * MIN, lan, DEPOSIT_NOTE),
                 (Status.DA_TIEP_NHAN, created + 20 * MIN, lan),
                 (Status.DA_PHAN_CONG, created + 30 * MIN, lan),
                 (Status.KTV_DA_NHAN, created + 35 * MIN, an),
@@ -715,6 +780,7 @@ class DemoBuilder:
             description="USB chứa tài liệu luận văn không đọc được, cần lấy lại dữ liệu.",
         )
         self.assign(t, "k2", appointment, created + 10 * MIN, "NHAN", created + 12 * MIN)
+        self.deposit(t, DepositStatus.DA_XAC_NHAN, created + 2 * MIN, created + 3 * MIN)
         t.check_in_at = appointment
         self.quote(t, "k2", [self.item("service", "dulieu")], "DA_DUYET", appointment + 15 * MIN, appointment + 20 * MIN)
         self.photos(t, "before")
@@ -722,6 +788,7 @@ class DemoBuilder:
             t,
             [
                 (Status.MOI, created, self.users["kh3"].name),
+                (Status.MOI, created + 3 * MIN, lan, DEPOSIT_NOTE),
                 (Status.DA_TIEP_NHAN, created + 5 * MIN, lan),
                 (Status.DA_PHAN_CONG, created + 10 * MIN, lan),
                 (Status.KTV_DA_NHAN, created + 12 * MIN, phuc),
@@ -748,11 +815,18 @@ class DemoBuilder:
         self.quote(t, "k3", items, "DA_DUYET", appointment + 10 * MIN, appointment + 15 * MIN)
         self.photos(t, "before", "after")
         t.acceptance = {"result": "DAT", "at": done.isoformat()}
-        t.payment = Payment(amount=sum(i.unit_price for i in items), method="CHUYEN_KHOAN", status="CHO_XAC_NHAN", paid_at=done + 6 * MIN)
+        self.deposit(t, DepositStatus.DA_TRU, created + 2 * MIN, created + 3 * MIN, done)
+        t.payment = Payment(
+            amount=sum(i.unit_price for i in items) - DEFAULT_CONFIG.survey_fee,
+            method="CHUYEN_KHOAN",
+            status="CHO_XAC_NHAN",
+            paid_at=done + 6 * MIN,
+        )
         self.history(
             t,
             [
                 (Status.MOI, created, self.users["kh2"].name),
+                (Status.MOI, created + 3 * MIN, lan, DEPOSIT_NOTE),
                 (Status.DA_TIEP_NHAN, created + 5 * MIN, lan),
                 (Status.DA_PHAN_CONG, created + 10 * MIN, lan),
                 (Status.KTV_DA_NHAN, created + 12 * MIN, huy),
@@ -762,6 +836,36 @@ class DemoBuilder:
                 (Status.CHO_NGHIEM_THU, done - 5 * MIN, huy),
                 (Status.CHO_THANH_TOAN, done, self.users["kh2"].name),
             ],
+        )
+        created = min(self.at(0, 7, 15), now - 3 * HOUR)
+        cancelled_at = created + 40 * MIN
+        reason = "Có việc đột xuất, sẽ đặt lại sau"
+        t = self.ticket(
+            customer="kh4",
+            device="tb5",
+            category="VIRUS",
+            status=Status.DA_HUY,
+            created=created,
+            slot=self.at(1, 10),
+            description="Trình duyệt tự mở trang quảng cáo, máy chậm hẳn.",
+        )
+        self.deposit(t, DepositStatus.CHO_HOAN, created + 3 * MIN, created + 6 * MIN)
+        kh4 = self.users["kh4"]
+        t.cancel = {"by": kh4.id, "byName": kh4.name, "reason": reason, "fee": 0, "at": cancelled_at.isoformat()}
+        self.history(
+            t,
+            [
+                (Status.MOI, created, self.users["kh4"].name),
+                (Status.MOI, created + 6 * MIN, lan, DEPOSIT_NOTE),
+                (Status.DA_HUY, cancelled_at, self.users["kh4"].name, reason),
+            ],
+        )
+        self.notify(
+            "dpv1",
+            "Phí giữ lịch cần hoàn",
+            f"Phiếu {t.id} đã hủy khi cửa hàng chưa tiếp nhận, cần chuyển trả {money(DEFAULT_CONFIG.survey_fee)} cho khách.",
+            t.id,
+            cancelled_at,
         )
         self.notify("dpv1", "Phiếu mới cần tiếp nhận", "Có 2 phiếu mới đang chờ tiếp nhận trên bảng điều phối.", None, now - 12 * MIN)
 

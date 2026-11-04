@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, forbidden, not_found
 from app.domain.rules import BusinessConfig
 from app.domain.rules import amount_due as amount_due_rule
-from app.domain.status import STATUS_LABEL, Status, can_transition
+from app.domain.status import STATUS_LABEL, DepositStatus, Status, can_transition
 from app.models import (
     AuditLog,
     Notification,
@@ -181,18 +181,34 @@ def main_quote_rejected(ticket: Ticket) -> bool:
     return any(q.type == "CHINH" and q.status == "TU_CHOI" for q in ticket.quotes)
 
 
+def deposit_held(ticket: Ticket) -> int:
+    """Phí giữ lịch cửa hàng đã nhận của phiếu, được trừ vào số tiền thanh toán."""
+    deposit = ticket.deposit
+    return deposit.amount if deposit and deposit.status in (DepositStatus.DA_XAC_NHAN, DepositStatus.DA_TRU) else 0
+
+
+def ticket_revenue(ticket: Ticket) -> int:
+    """Tiền thu của phiếu: số tiền thanh toán cộng phí giữ lịch đã trừ vào đó."""
+    deposit = ticket.deposit
+    applied = deposit.amount if deposit and deposit.status == DepositStatus.DA_TRU else 0
+    return (ticket.payment.amount if ticket.payment else 0) + applied
+
+
 def amount_due(ticket: Ticket, config: BusinessConfig) -> int:
-    return amount_due_rule(main_quote_rejected(ticket), approved_total(ticket), ticket.is_warranty, config)
+    return amount_due_rule(main_quote_rejected(ticket), approved_total(ticket), ticket.is_warranty, config, deposit_held(ticket))
 
 
 def open_payment(db: Session, ticket: Ticket, actor: User, config: BusinessConfig) -> None:
-    """Mở bước thanh toán; phiếu không phát sinh chi phí (ví dụ phiếu bảo hành) thì hoàn tất luôn."""
-    amount = amount_due(ticket, config) + ticket.late_reschedule_fee
+    """Mở bước thanh toán; phí giữ lịch được trừ vào số tiền. Không còn phải trả thêm thì phiếu hoàn tất luôn."""
+    amount = amount_due(ticket, config)
+    if ticket.deposit and ticket.deposit.status == DepositStatus.DA_XAC_NHAN:
+        ticket.deposit.status = DepositStatus.DA_TRU
+        ticket.deposit.settled_at = utcnow()
     if amount > 0:
         ticket.payment = Payment(amount=amount, method=None, status="CHO_THANH_TOAN")
         return
     ticket.payment = Payment(amount=0, method=None, status="MIEN_PHI", paid_at=utcnow())
-    complete(db, ticket, actor, "Không phát sinh chi phí", config)
+    complete(db, ticket, actor, "Đã trừ phí giữ lịch, không phải trả thêm" if ticket.deposit else "Không phát sinh chi phí", config)
 
 
 def complete(db: Session, ticket: Ticket, actor: User, note: str, config: BusinessConfig) -> None:

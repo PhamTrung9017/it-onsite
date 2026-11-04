@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import decrypt_secret
-from app.domain.rules import BusinessConfig, WorkSchedule
+from app.domain.rules import BusinessConfig, WorkSchedule, deposit_deadline
 from app.models import Category, Device, Quote, Technician, Ticket, User
 from app.services.common import amount_due, tech_of_user
 
@@ -115,6 +115,7 @@ class Presenter:
             credentials = decrypt_secret(t.device_credentials) if is_assigned_tech else MASK
         category = self.categories.get(t.category_code)
         payment = t.payment
+        deposit = t.deposit
         data = {
             "id": t.id,
             "customerId": t.customer_id,
@@ -169,7 +170,17 @@ class Presenter:
             "completedAt": iso(t.completed_at),
             "isWarranty": t.is_warranty,
             "warrantyOf": t.warranty_of,
-            "lateRescheduleFee": t.late_reschedule_fee,
+            "deposit": deposit
+            and {
+                "amount": deposit.amount,
+                "status": deposit.status,
+                "reportedAt": iso(deposit.reported_at),
+                "confirmedAt": iso(deposit.confirmed_at),
+                "confirmedByName": deposit.confirmed_by_name,
+                "settledAt": iso(deposit.settled_at),
+                "settledByName": deposit.settled_by_name,
+                "deadline": iso(deposit_deadline(t.created_at, self.config)),
+            },
             "customer": {"id": t.customer.id, "name": t.customer.name, "phone": t.customer.phone},
             "device": device_json(t.device),
             "category": category_json(category) if category else None,

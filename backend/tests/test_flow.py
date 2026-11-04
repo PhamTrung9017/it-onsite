@@ -5,7 +5,7 @@ from datetime import timedelta
 from sqlalchemy import select, update
 
 from app.db import SessionLocal
-from app.models import Assignment, Part
+from app.models import Assignment, Deposit, Part
 from app.services.common import utcnow
 from tests.conftest import PNG, Api, tomorrow_at
 
@@ -32,10 +32,16 @@ def create_ticket(khach: Api, description: str, hour: int = 15, credentials: str
     )
 
 
+def receive(dpv: Api, ticket: dict, category: str | None = None, **extra) -> dict:
+    """Điều phối viên đối chiếu sao kê, xác nhận phí giữ lịch rồi tiếp nhận phiếu."""
+    if ticket.get("deposit") and ticket["deposit"]["status"] != "DA_XAC_NHAN":
+        ticket = dpv.ok("post", f"/tickets/{ticket['id']}/deposit/confirm")
+    body = {"categoryCode": category or ticket["categoryCode"], "version": ticket["version"], **extra}
+    return dpv.ok("post", f"/tickets/{ticket['id']}/receive", body)
+
+
 def receive_and_assign(dpv: Api, ticket: dict) -> dict:
-    received = dpv.ok(
-        "post", f"/tickets/{ticket['id']}/receive", {"categoryCode": ticket["categoryCode"], "urgency": "CAO", "version": ticket["version"]}
-    )
+    received = receive(dpv, ticket, urgency="CAO")
     suggestions = dpv.ok("get", f"/tickets/{ticket['id']}/technician-suggestions?appointmentAt={received['slotStart'].replace('+', '%2B')}")
     best = next(s for s in suggestions if not s["conflict"] and not s["offDuty"])
     return dpv.ok(
@@ -54,6 +60,12 @@ def login_tech(client, dpv: Api, tech_id: int) -> Api:
 def test_full_flow_from_request_to_warranty(client, khach, dpv):
     ticket = create_ticket(khach, "Máy tính không lên nguồn, bấm nút nguồn không có đèn, cần gấp.", credentials="win: 1234")
     assert ticket["status"] == "MOI" and ticket["categoryCode"] == "NGUON"
+    assert ticket["deposit"]["status"] == "CHO_THANH_TOAN" and ticket["deposit"]["amount"] == 50000
+    deposit = khach.ok("get", f"/tickets/{ticket['id']}/deposit")
+    assert deposit["content"] == f"ITONSITE {ticket['id'].replace('-', '')} GL" and deposit["qrPayload"].startswith("000201")
+    assert dpv.post(f"/tickets/{ticket['id']}/receive", {"categoryCode": "NGUON", "version": ticket["version"]}).status_code == 409
+    assert khach.ok("post", f"/tickets/{ticket['id']}/deposit/transfer")["deposit"]["status"] == "CHO_XAC_NHAN"
+    assert khach.post(f"/tickets/{ticket['id']}/deposit/transfer").status_code == 409
     assert ticket["photos"][0].startswith("/media/")
     assert client.get(ticket["photos"][0]).status_code == 200
 
@@ -100,7 +112,8 @@ def test_full_flow_from_request_to_warranty(client, khach, dpv):
 
     accepted = khach.ok("post", f"/tickets/{ticket['id']}/acceptance", {"ok": True})
     assert accepted["status"] == "CHO_THANH_TOAN"
-    assert accepted["payment"]["amount"] == quote["items"][0]["unitPrice"], "BR-02: chỉ thu hạng mục đã duyệt"
+    assert accepted["payment"]["amount"] == quote["items"][0]["unitPrice"] - 50000, "BR-02: chỉ thu hạng mục đã duyệt, trừ phí giữ lịch"
+    assert accepted["deposit"]["status"] == "DA_TRU"
 
     info = khach.ok("get", f"/tickets/{ticket['id']}/payment")
     assert info["payable"] and info["qrPayload"].startswith("000201")
@@ -129,10 +142,22 @@ def test_full_flow_from_request_to_warranty(client, khach, dpv):
     assert any(n["ticketId"] == ticket["id"] for n in notifications)
 
 
-def test_reject_quote_pays_survey_fee_in_cash_br02_br08(client, khach, dpv):
+def test_reject_quote_keeps_deposit_as_survey_fee_br02_br08(client, khach, dpv):
     ticket = next(t for t in khach.ok("get", "/tickets/mine") if t["status"] == "CHO_DUYET_BAO_GIA")
     quote = ticket["quotes"][-1]
     assert khach.post(f"/tickets/{ticket['id']}/quotes/{quote['id']}/decision", {"decision": "reject"}).status_code == 400
+    rejected = khach.ok("post", f"/tickets/{ticket['id']}/quotes/{quote['id']}/decision", {"decision": "reject", "reason": "Đắt"})
+    assert rejected["status"] == "HOAN_TAT" and rejected["payment"]["status"] == "MIEN_PHI" and rejected["payment"]["amount"] == 0
+    assert rejected["deposit"]["status"] == "DA_TRU"
+    assert "phí giữ lịch được tính là phí khảo sát" in rejected["history"][-2]["note"]
+
+
+def test_reject_quote_pays_survey_fee_in_cash_without_deposit(client, khach, dpv):
+    ticket = next(t for t in khach.ok("get", "/tickets/mine") if t["status"] == "CHO_DUYET_BAO_GIA")
+    with SessionLocal() as db:
+        db.delete(db.get(Deposit, ticket["id"]))
+        db.commit()
+    quote = ticket["quotes"][-1]
     rejected = khach.ok("post", f"/tickets/{ticket['id']}/quotes/{quote['id']}/decision", {"decision": "reject", "reason": "Đắt"})
     assert rejected["status"] == "CHO_THANH_TOAN" and rejected["payment"]["amount"] == 50000
 
@@ -168,7 +193,7 @@ def test_overdue_assignment_is_revoked_br06(client, dpv):
 
 def test_stale_version_is_rejected_uc08(client, khach, dpv):
     ticket = create_ticket(khach, "Laptop bị virus quảng cáo bật liên tục.")
-    dpv.ok("post", f"/tickets/{ticket['id']}/receive", {"categoryCode": "VIRUS", "version": ticket["version"]})
+    receive(dpv, ticket, "VIRUS")
     stale = dpv.post(f"/tickets/{ticket['id']}/assign", {"techId": 1, "appointmentAt": ticket["slotStart"], "version": ticket["version"]})
     assert stale.status_code == 409
 
@@ -176,7 +201,7 @@ def test_stale_version_is_rejected_uc08(client, khach, dpv):
 def test_double_booking_is_rejected_br04(client, khach, dpv):
     first = receive_and_assign(dpv, create_ticket(khach, "Cài lại Windows 11 cho laptop.", hour=10))
     second = create_ticket(khach, "Cài phần mềm Office cho máy.", hour=10)
-    received = dpv.ok("post", f"/tickets/{second['id']}/receive", {"categoryCode": "PHAN_MEM", "version": second["version"]})
+    received = receive(dpv, second, "PHAN_MEM")
     response = dpv.post(
         f"/tickets/{second['id']}/assign",
         {"techId": first["assignment"]["techId"], "appointmentAt": first["assignment"]["appointmentAt"], "version": received["version"]},

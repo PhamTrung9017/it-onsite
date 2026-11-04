@@ -59,6 +59,14 @@ class ReasonBody(Body):
     reason: str = Field(default="", max_length=1000)
 
 
+class CancelBody(ReasonBody):
+    charge_customer: bool = False
+
+
+class RefundBody(Body):
+    received: bool = True
+
+
 class ClassifyBody(Body):
     description: str = Field(max_length=2000)
 

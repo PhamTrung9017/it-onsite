@@ -8,7 +8,7 @@ from app.db import SessionLocal
 from app.models import Assignment, Notification, Ticket, User, Warranty
 from app.services.common import utcnow
 from tests.conftest import PNG, Api, tomorrow_at
-from tests.test_flow import create_ticket, login_tech, receive_and_assign
+from tests.test_flow import create_ticket, login_tech, receive, receive_and_assign
 
 
 def work_until_quote(tech: Api, ticket_id: str, items: list[dict]) -> dict:
@@ -90,7 +90,7 @@ def test_quote_checks_total_stock_of_repeated_part(client, ktv):
 
 def test_locked_or_removed_technician_is_not_suggested(client, qtv, dpv, khach):
     ticket = create_ticket(khach, "Laptop bị virus quảng cáo bật liên tục.")
-    received = dpv.ok("post", f"/tickets/{ticket['id']}/receive", {"categoryCode": "VIRUS", "version": ticket["version"]})
+    received = receive(dpv, ticket, "VIRUS")
     users = qtv.ok("get", "/admin/overview")["users"]
     an = next(u for u in users if u["email"] == "ktv@demo.vn")
     huy = next(u for u in users if u["email"] == "huy.tran@demo.vn")
@@ -157,13 +157,11 @@ def test_forged_ai_result_is_cleaned(client, khach):
         assert db.get(Ticket, ticket["id"]).ai_result is None
 
 
-def test_late_cancellation_fee_only_when_customer_cancels_br03(client, khach, dpv):
-    by_customer = create_ticket(khach, "Cần cài lại Windows cho laptop.")
-    by_dispatcher = create_ticket(khach, "Cần cài Office cho máy tính.")
+def test_late_reschedule_needs_dispatcher_br03(client, khach, dpv):
+    ticket = create_ticket(khach, "Cần cài lại Windows cho laptop.")
     with SessionLocal() as db:
-        db.execute(
-            update(Ticket).where(Ticket.id.in_([by_customer["id"], by_dispatcher["id"]])).values(slot_start=utcnow() + timedelta(hours=1))
-        )
+        db.execute(update(Ticket).where(Ticket.id == ticket["id"]).values(slot_start=utcnow() + timedelta(hours=1)))
         db.commit()
-    assert khach.ok("post", f"/tickets/{by_customer['id']}/cancel", {"reason": "Bận việc"})["cancel"]["fee"] == 50000
-    assert dpv.ok("post", f"/tickets/{by_dispatcher['id']}/cancel", {"reason": "Ngoài khu vực"})["cancel"]["fee"] == 0
+    response = khach.post(f"/tickets/{ticket['id']}/reschedule", {"slotStart": tomorrow_at(16)})
+    assert response.status_code == 409 and "gọi cửa hàng" in response.json()["detail"]
+    dpv.ok("post", f"/tickets/{ticket['id']}/reschedule", {"slotStart": tomorrow_at(16)})

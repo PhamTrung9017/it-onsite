@@ -2,14 +2,14 @@
 import { AREAS, buildSeed } from './seed.js';
 import { canTransition, STATUS, STATUS_LABEL, BUSY_STATUSES, isClosed } from '../../lib/ticketStatus.js';
 import {
-  DEFAULT_SCHEDULE, amountDue, canComplete, cancellationPolicy, hasConflict, offDuty, rankTechnicians, reportPeriod, responseDeadline,
-  reviewPolicy, validateReview, validateSchedule, validateSlot, warrantyStatus,
+  DEFAULT_SCHEDULE, amountDue, canComplete, cancellationPolicy, depositDeadline, depositHeld, hasConflict, mainQuoteRejected, offDuty,
+  rankTechnicians, reportPeriod, reschedulePolicy, responseDeadline, reviewPolicy, validateReview, validateSchedule, validateSlot, warrantyStatus,
 } from '../../lib/rules.js';
 import { classifyIssue, redactPersonalData } from '../../lib/classifier.js';
-import { buildVietQR } from '../../lib/vietqr.js';
+import { buildVietQR, sanitizeContent } from '../../lib/vietqr.js';
 import { ApiError } from '../apiError.js';
 
-const KEY = 'itonsite.mock.v1';
+const KEY = 'itonsite.mock.v2';
 const SESSION_KEY = 'itonsite.session.v1';
 const DAY = 86400000;
 
@@ -27,7 +27,7 @@ function load() {
   } catch {
     cache = null;
   }
-  if (!cache || cache.version !== 1) {
+  if (!cache || cache.version !== 2) {
     cache = buildSeed();
     persist();
   }
@@ -45,6 +45,7 @@ function persist() {
 const clone = (x) => structuredClone(x);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nowIso = () => new Date().toISOString();
+const money = (v) => `${v.toLocaleString('vi-VN')}đ`;
 
 async function respond(fn, delay = 220) {
   await sleep(delay);
@@ -138,10 +139,16 @@ function transition(db, t, to, actor, note = '') {
   notify(db, recipients.filter((id) => id !== actor?.id), 'Cập nhật trạng thái phiếu', msg, t.id);
 }
 
-/** BR-06: thu hồi phân công quá hạn phản hồi. */
+/** BR-06: thu hồi phân công quá hạn phản hồi; phiếu quá hạn chưa trả phí giữ lịch thì tự hủy. */
 function sweep(db) {
   const now = Date.now();
   db.tickets.forEach((t) => {
+    if (t.status === STATUS.MOI && t.deposit?.status === 'CHO_THANH_TOAN' && new Date(depositDeadline(t, db.config)).getTime() < now) {
+      const reason = 'Quá hạn thanh toán phí giữ lịch';
+      settleOnCancel(t, false);
+      t.cancel = { by: null, byName: 'Hệ thống', reason, fee: 0, at: nowIso() };
+      transition(db, t, STATUS.DA_HUY, null, reason);
+    }
     if (t.status === STATUS.DA_PHAN_CONG && t.assignment && !t.assignment.result && new Date(t.assignment.deadline).getTime() < now) {
       t.assignment.result = 'QUA_HAN';
       t.assignment.respondedAt = nowIso();
@@ -167,9 +174,42 @@ function enrichTicket(db, t, viewer) {
     device: device || null,
     category: category || null,
     technician: tech ? { id: tech.id, name: techUser?.name, phone: techUser?.phone, rating: tech.rating, ratingCount: tech.ratingCount } : null,
+    deposit: t.deposit ? { ...t.deposit, deadline: depositDeadline(t, db.config) } : null,
     amountDue: amountDue(t, db.config),
   };
 }
+
+/* ---------- Phí giữ lịch (BR-02, BR-03) ---------- */
+
+const depositContent = (t) => sanitizeContent(`ITONSITE ${t.id} GL`);
+
+/** Xử lý phí giữ lịch khi phiếu bị hủy; trả về số tiền khách mất. */
+function settleOnCancel(t, forfeit) {
+  const d = t.deposit;
+  if (!d) return 0;
+  if (d.status === 'DA_XAC_NHAN' && forfeit) {
+    Object.assign(d, { status: 'KHONG_HOAN', settledAt: nowIso() });
+    return d.amount;
+  }
+  if (d.status === 'DA_XAC_NHAN' || d.status === 'CHO_XAC_NHAN') d.status = 'CHO_HOAN';
+  else if (d.status === 'CHO_THANH_TOAN') Object.assign(d, { status: 'KHONG_PHAT_SINH', settledAt: nowIso() });
+  return 0;
+}
+
+function customerDeposit(db, id) {
+  const user = requireRole(db, 'KHACH');
+  const t = findTicket(db, id);
+  if (t.customerId !== user.id) throw new ApiError('Bạn không có quyền thao tác trên phiếu này.', 403);
+  if (!t.deposit) throw new ApiError('Phiếu này không cần trả phí giữ lịch.', 409);
+  return { user, t };
+}
+
+const ticketPolicies = (db, t) => ({
+  policy: cancellationPolicy(t),
+  reschedulePolicy: reschedulePolicy(t, db.config),
+  reviewPolicy: reviewPolicy(t, db.config),
+  config: { surveyFee: db.config.surveyFee, freeCancelHours: db.config.freeCancelHours, depositMinutes: db.config.depositMinutes, serviceHours: db.config.serviceHours },
+});
 
 function createTicketRecord(db, data) {
   const created = new Date();
@@ -212,21 +252,27 @@ function createTicketRecord(db, data) {
     completedAt: null,
     isWarranty: Boolean(data.isWarranty),
     warrantyOf: data.warrantyOf || null,
+    deposit: data.isWarranty || !db.config.surveyFee ? null
+      : { amount: db.config.surveyFee, status: 'CHO_THANH_TOAN', reportedAt: null, confirmedAt: null, confirmedByName: '', settledAt: null, settledByName: '' },
   };
   db.tickets.push(t);
   return t;
 }
 
-/** Mở bước thanh toán; không phát sinh chi phí thì hoàn tất luôn. */
+/** Mở bước thanh toán; phí giữ lịch được trừ vào số tiền. Không còn phải trả thêm thì hoàn tất luôn. */
 function openPayment(db, t, actor) {
-  const amount = amountDue(t, db.config) + (t.lateRescheduleFee || 0);
+  const amount = amountDue(t, db.config);
+  if (t.deposit?.status === 'DA_XAC_NHAN') Object.assign(t.deposit, { status: 'DA_TRU', settledAt: nowIso() });
   if (amount > 0) {
     t.payment = { amount, method: null, status: 'CHO_THANH_TOAN' };
     return;
   }
   t.payment = { amount: 0, method: null, status: 'MIEN_PHI', paidAt: nowIso() };
-  complete(db, t, actor, 'Không phát sinh chi phí');
+  complete(db, t, actor, t.deposit ? 'Đã trừ phí giữ lịch, không phải trả thêm' : 'Không phát sinh chi phí');
 }
+
+/** Tiền thu của phiếu: số tiền thanh toán cộng phí giữ lịch đã trừ vào đó. */
+const ticketRevenue = (t) => (t.payment?.amount || 0) + (t.deposit?.status === 'DA_TRU' ? t.deposit.amount : 0);
 
 /** Hoàn tất phiếu và phát hành bảo hành theo hạng mục (BR-07); phiếu bảo hành không phát hành bảo hành mới. */
 function complete(db, t, actor, note) {
@@ -319,7 +365,7 @@ export const mockApi = {
   getCatalog: () => respond((db) => ({
     services: db.services.filter((s) => s.active),
     categories: db.categories,
-    config: { surveyFee: db.config.surveyFee, freeCancelHours: db.config.freeCancelHours, serviceHours: db.config.serviceHours, areas: db.config.areas, reviewWindowDays: db.config.reviewWindowDays },
+    config: { surveyFee: db.config.surveyFee, freeCancelHours: db.config.freeCancelHours, depositMinutes: db.config.depositMinutes, serviceHours: db.config.serviceHours, areas: db.config.areas, reviewWindowDays: db.config.reviewWindowDays },
   }), 120),
 
   /* ---------- Khách hàng: hồ sơ, thiết bị (UC02) ---------- */
@@ -418,7 +464,7 @@ export const mockApi = {
     });
     audit(db, user, 'TAO_PHIEU', t.id);
     notify(db, dispatcherIds(db), 'Phiếu mới cần tiếp nhận', `${user.name} vừa gửi phiếu ${t.id}.`, t.id);
-    notify(db, [user.id], 'Đã nhận yêu cầu', `Phiếu ${t.id} đã được ghi nhận. Điều phối viên sẽ phân công kỹ thuật viên sớm.`, t.id);
+    notify(db, [user.id], 'Đã nhận yêu cầu', `Phiếu ${t.id} đã được ghi nhận. Vui lòng chuyển phí giữ lịch ${money(db.config.surveyFee)} trong ${db.config.depositMinutes} phút để cửa hàng tiếp nhận.`, t.id);
     return enrichTicket(db, t, user);
   }, 450),
 
@@ -434,19 +480,24 @@ export const mockApi = {
     const user = currentUser(db);
     const t = findTicket(db, id);
     if (!canView(db, user, t)) throw new ApiError('Bạn không có quyền xem phiếu này.', 403);
-    return { ...enrichTicket(db, t, user), policy: cancellationPolicy(t, db.config), reviewPolicy: reviewPolicy(t, db.config), config: { surveyFee: db.config.surveyFee, freeCancelHours: db.config.freeCancelHours, serviceHours: db.config.serviceHours } };
+    return { ...enrichTicket(db, t, user), ...ticketPolicies(db, t) };
   }, 150),
 
-  cancelTicket: (id, { reason }) => respond((db) => {
+  /** BR-03: khách hủy sau khi cửa hàng tiếp nhận thì mất phí giữ lịch; điều phối viên hủy thay, chargeCustomer khi khách yêu cầu hủy hoặc vắng mặt. */
+  cancelTicket: (id, { reason, chargeCustomer = false }) => respond((db) => {
     const user = requireRole(db, 'KHACH', 'DPV');
     const t = findTicket(db, id);
     const byCustomer = t.customerId === user.id;
     if (!byCustomer && !user.roles.includes('DPV')) throw new ApiError('Bạn không có quyền hủy phiếu này.', 403);
-    const policy = cancellationPolicy(t, db.config);
+    const policy = cancellationPolicy(t);
     if (!policy.allowed) throw new ApiError(policy.reason, 409);
     if (!reason?.trim()) throw new ApiError('Vui lòng cho biết lý do hủy.');
-    t.cancel = { by: user.id, byName: user.name, reason: reason.trim(), fee: byCustomer ? policy.fee : 0, at: nowIso() };
+    const fee = settleOnCancel(t, t.status !== STATUS.MOI && (byCustomer || chargeCustomer));
+    t.cancel = { by: user.id, byName: user.name, reason: reason.trim(), fee, at: nowIso() };
     transition(db, t, STATUS.DA_HUY, user, reason.trim());
+    if (t.deposit?.status === 'CHO_HOAN') {
+      notify(db, dispatcherIds(db), 'Cần hoàn phí giữ lịch', `Phiếu ${t.id} đã hủy, cần chuyển trả phí giữ lịch cho khách.`, t.id);
+    }
     return enrichTicket(db, t, user);
   }),
 
@@ -455,8 +506,9 @@ export const mockApi = {
     const t = findTicket(db, id);
     const byCustomer = t.customerId === user.id;
     if (!byCustomer && !user.roles.includes('DPV')) throw new ApiError('Bạn không có quyền đổi lịch phiếu này.', 403);
-    const policy = cancellationPolicy(t, db.config);
-    if (!policy.allowed) throw new ApiError(policy.reason, 409);
+    // Khách đổi lịch khi còn đủ thời gian; điều phối viên đổi thay khách bất kỳ lúc nào trước check-in
+    const policy = reschedulePolicy(t, db.config);
+    if (!policy.allowed && (byCustomer || !cancellationPolicy(t).allowed)) throw new ApiError(policy.reason, 409);
     const err = validateSlot(slotStart, db.config);
     if (err) throw new ApiError(err);
     if (t.assignment && [STATUS.DA_PHAN_CONG, STATUS.KTV_DA_NHAN].includes(t.status)) {
@@ -471,12 +523,10 @@ export const mockApi = {
       t.assignment.appointmentAt = slotStart;
       notify(db, [techUserId(db, t.assignment.techId)], 'Khách đổi lịch hẹn', `Phiếu ${t.id} đổi lịch hẹn, vui lòng xem giờ mới.`, t.id);
     }
-    const fee = byCustomer ? policy.fee : 0;
     t.slotStart = slotStart;
-    t.lateRescheduleFee = (t.lateRescheduleFee || 0) + fee;
     t.version += 1;
     t.updatedAt = nowIso();
-    t.history.push({ status: t.status, at: t.updatedAt, by: user.name, note: `Đổi lịch hẹn${fee ? ` (phí đổi lịch sát giờ ${fee.toLocaleString('vi-VN')}đ)` : ''}` });
+    t.history.push({ status: t.status, at: t.updatedAt, by: user.name, note: 'Đổi lịch hẹn' });
     notify(db, dispatcherIds(db).filter((x) => x !== user.id), 'Khách đổi lịch hẹn', `Phiếu ${t.id} đổi sang khung giờ mới.`, t.id);
     audit(db, user, 'DOI_LICH', t.id, slotStart);
     return enrichTicket(db, t, user);
@@ -547,6 +597,26 @@ export const mockApi = {
     t.payment = { ...t.payment, method: 'TIEN_MAT', status: 'CHO_THANH_TOAN' };
     const techUser = t.assignment && techUserId(db, t.assignment.techId);
     notify(db, [techUser], 'Khách chọn trả tiền mặt', `Phiếu ${t.id}: thu ${t.payment.amount.toLocaleString('vi-VN')}đ tiền mặt.`, t.id);
+    return enrichTicket(db, t, user);
+  }),
+
+  getDepositInfo: (id) => respond((db) => {
+    const { t } = customerDeposit(db, id);
+    const bank = db.config.bank;
+    const content = depositContent(t);
+    return {
+      amount: t.deposit.amount, status: t.deposit.status, deadline: depositDeadline(t, db.config), content, bank,
+      qrPayload: buildVietQR({ bin: bank.bin, accountNumber: bank.accountNumber, amount: t.deposit.amount, content }),
+    };
+  }, 120),
+
+  reportDeposit: (id) => respond((db) => {
+    const { user, t } = customerDeposit(db, id);
+    if (t.status !== STATUS.MOI || t.deposit.status !== 'CHO_THANH_TOAN') throw new ApiError('Phí giữ lịch của phiếu này không chờ thanh toán.', 409);
+    Object.assign(t.deposit, { status: 'CHO_XAC_NHAN', reportedAt: nowIso() });
+    t.version += 1;
+    t.updatedAt = nowIso();
+    notify(db, dispatcherIds(db), 'Khách báo đã chuyển phí giữ lịch', `Phiếu ${t.id}: ${money(t.deposit.amount)} cần đối chiếu sao kê trước khi tiếp nhận.`, t.id);
     return enrichTicket(db, t, user);
   }),
 
@@ -690,7 +760,7 @@ export const mockApi = {
       user: publicUser(user),
       tech,
       categories: db.categories,
-      stats: { doneMonth: doneMonth.length, revenueMonth: doneMonth.reduce((s, t) => s + (t.payment?.amount || 0), 0), doneTotal: jobs.filter((t) => t.status === STATUS.HOAN_TAT).length },
+      stats: { doneMonth: doneMonth.length, revenueMonth: doneMonth.reduce((s, t) => s + ticketRevenue(t), 0), doneTotal: jobs.filter((t) => t.status === STATUS.HOAN_TAT).length },
       reviews,
     };
   }, 150),
@@ -789,6 +859,7 @@ export const mockApi = {
     const user = requireRole(db, 'DPV');
     const t = findTicket(db, id);
     if (version !== undefined && version !== t.version) throw new ApiError('Phiếu vừa được người khác cập nhật. Vui lòng tải lại.', 409);
+    if (t.deposit && t.deposit.status !== 'DA_XAC_NHAN') throw new ApiError('Cần xác nhận đã nhận phí giữ lịch trước khi tiếp nhận phiếu.', 409);
     const cat = db.categories.find((c) => c.code === categoryCode);
     if (!cat) throw new ApiError('Vui lòng chọn loại sự cố.');
     t.categoryCode = categoryCode;
@@ -850,6 +921,44 @@ export const mockApi = {
     if (t.payment?.status !== 'DA_THU') throw new ApiError('Khoản tiền mặt này không chờ đối soát.', 409);
     t.payment = { ...t.payment, status: 'DA_DOI_SOAT', reconciledBy: user.id, reconciledAt: nowIso() };
     audit(db, user, 'DOI_SOAT_TIEN_MAT', t.id);
+    return enrichTicket(db, t, user);
+  }),
+
+  /** Khoản cần xử lý (chờ xác nhận, chờ hoàn) trước, sau đó các khoản đã xử lý gần đây. */
+  listDeposits: () => respond((db) => {
+    requireRole(db, 'DPV', 'QTV');
+    const pending = db.tickets.filter((t) => ['CHO_XAC_NHAN', 'CHO_HOAN'].includes(t.deposit?.status)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const done = db.tickets.filter((t) => ['DA_XAC_NHAN', 'DA_HOAN', 'KHONG_HOAN'].includes(t.deposit?.status))
+      .sort((a, b) => (b.deposit.confirmedAt || '').localeCompare(a.deposit.confirmedAt || '')).slice(0, 40);
+    return [...pending, ...done].map((t) => enrichTicket(db, t, null));
+  }, 160),
+
+  confirmDeposit: (id) => respond((db) => {
+    const user = requireRole(db, 'DPV');
+    const t = findTicket(db, id);
+    if (t.status !== STATUS.MOI || !['CHO_THANH_TOAN', 'CHO_XAC_NHAN'].includes(t.deposit?.status)) throw new ApiError('Phí giữ lịch của phiếu này không chờ xác nhận.', 409);
+    Object.assign(t.deposit, { status: 'DA_XAC_NHAN', confirmedAt: nowIso(), confirmedByName: user.name });
+    t.version += 1;
+    t.updatedAt = nowIso();
+    t.history.push({ status: t.status, at: t.updatedAt, by: user.name, note: `Đã nhận phí giữ lịch ${money(t.deposit.amount)}` });
+    audit(db, user, 'XAC_NHAN_PHI_GIU_LICH', t.id, money(t.deposit.amount));
+    notify(db, [t.customerId], 'Đã nhận phí giữ lịch', `Cửa hàng đã nhận ${money(t.deposit.amount)} cho phiếu ${t.id}.`, t.id);
+    return enrichTicket(db, t, user);
+  }),
+
+  /** Chuyển trả phí giữ lịch, hoặc ghi nhận khách báo chuyển nhưng cửa hàng không nhận được tiền. */
+  refundDeposit: (id, { received = true } = {}) => respond((db) => {
+    const user = requireRole(db, 'DPV');
+    const t = findTicket(db, id);
+    if (t.deposit?.status !== 'CHO_HOAN') throw new ApiError('Phí giữ lịch của phiếu này không chờ hoàn.', 409);
+    Object.assign(t.deposit, { status: received ? 'DA_HOAN' : 'KHONG_PHAT_SINH', settledAt: nowIso(), settledByName: user.name });
+    t.version += 1;
+    t.updatedAt = nowIso();
+    if (received) {
+      t.history.push({ status: t.status, at: t.updatedAt, by: user.name, note: `Đã hoàn phí giữ lịch ${money(t.deposit.amount)}` });
+      notify(db, [t.customerId], 'Đã hoàn phí giữ lịch', `Cửa hàng đã chuyển trả ${money(t.deposit.amount)} của phiếu ${t.id}.`, t.id);
+    }
+    audit(db, user, received ? 'HOAN_PHI_GIU_LICH' : 'KHONG_NHAN_PHI_GIU_LICH', t.id, money(t.deposit.amount));
     return enrichTicket(db, t, user);
   }),
 
@@ -986,7 +1095,7 @@ export const mockApi = {
   saveConfig: (cfg) => respond((db) => {
     const user = requireRole(db, 'QTV');
     const n = (v) => Number(v);
-    if (!(n(cfg.surveyFee) >= 0) || !(n(cfg.freeCancelHours) >= 0) || !(n(cfg.techResponseMinutes) >= 1) || !(n(cfg.travelBufferMinutes) >= 0) || !(n(cfg.reviewWindowDays) >= 1)) {
+    if (!(n(cfg.surveyFee) >= 0) || !(n(cfg.freeCancelHours) >= 0) || !(n(cfg.depositMinutes) >= 5) || !(n(cfg.techResponseMinutes) >= 1) || !(n(cfg.travelBufferMinutes) >= 0) || !(n(cfg.reviewWindowDays) >= 1)) {
       throw new ApiError('Các tham số phải là số hợp lệ.');
     }
     if (cfg.serviceHours.start >= cfg.serviceHours.end) throw new ApiError('Giờ bắt đầu phục vụ phải trước giờ kết thúc.');
@@ -994,7 +1103,7 @@ export const mockApi = {
     if (!/^\d{6}$/.test(cfg.bank.bin) || !/^\d{6,19}$/.test(cfg.bank.accountNumber)) throw new ApiError('Mã BIN gồm 6 chữ số, số tài khoản gồm 6–19 chữ số.');
     const payroll = { baseSalary: n(cfg.payroll?.baseSalary ?? 0), commissionPercent: n(cfg.payroll?.commissionPercent ?? 0) };
     if (!(payroll.baseSalary >= 0) || !(payroll.commissionPercent >= 0 && payroll.commissionPercent <= 100)) throw new ApiError('Các tham số phải là số hợp lệ.');
-    db.config = { ...db.config, ...cfg, surveyFee: n(cfg.surveyFee), freeCancelHours: n(cfg.freeCancelHours), techResponseMinutes: n(cfg.techResponseMinutes), travelBufferMinutes: n(cfg.travelBufferMinutes), reviewWindowDays: n(cfg.reviewWindowDays), payroll };
+    db.config = { ...db.config, ...cfg, surveyFee: n(cfg.surveyFee), freeCancelHours: n(cfg.freeCancelHours), depositMinutes: n(cfg.depositMinutes), techResponseMinutes: n(cfg.techResponseMinutes), travelBufferMinutes: n(cfg.travelBufferMinutes), reviewWindowDays: n(cfg.reviewWindowDays), payroll };
     audit(db, user, 'CAU_HINH', 'tham số nghiệp vụ');
     return db.config;
   }),
@@ -1009,7 +1118,10 @@ export const mockApi = {
     const completedIn = (a, b) => db.tickets.filter((t) => t.status === STATUS.HOAN_TAT && within(t.completedAt, a, b));
     const completed = completedIn(p.start, p.end);
     const completedPrev = completedIn(p.prevStart, p.prevEnd);
-    const revenueOf = (list) => list.reduce((s, t) => s + (t.payment?.amount || 0), 0);
+    const forfeitedIn = (a, b) => db.tickets.filter((t) => t.deposit?.status === 'KHONG_HOAN' && within(t.deposit.settledAt, a, b));
+    const forfeited = forfeitedIn(p.start, p.end);
+    const forfeitOf = (list) => list.reduce((s, t) => s + t.deposit.amount, 0);
+    const revenueOf = (list, lost = []) => list.reduce((s, t) => s + ticketRevenue(t), 0) + forfeitOf(lost);
     const avgHours = (list) => (list.length ? list.reduce((s, t) => s + (at(t.completedAt) - at(t.createdAt)), 0) / list.length / 3600000 : 0);
     const avgStars = (list) => {
       const rv = list.filter((t) => t.review);
@@ -1019,7 +1131,7 @@ export const mockApi = {
     const last = Math.min(p.end.getTime(), now.getTime());
     for (let d = new Date(p.start); d.getTime() < last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
       const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-      byDay.push({ date: d.toISOString(), revenue: revenueOf(completed.filter((t) => within(t.completedAt, d, next))) });
+      byDay.push({ date: d.toISOString(), revenue: revenueOf(completed.filter((t) => within(t.completedAt, d, next)), forfeited.filter((t) => within(t.deposit.settledAt, d, next))) });
     }
     const byStatus = Object.keys(STATUS_LABEL).map((s) => ({ status: s, count: created.filter((t) => t.status === s).length })).filter((x) => x.count);
     const byCategory = db.categories.map((c) => ({ name: c.name, count: created.filter((t) => t.categoryCode === c.code).length })).filter((x) => x.count).sort((a, b) => b.count - a.count);
@@ -1029,7 +1141,8 @@ export const mockApi = {
     }).filter((x) => x.done);
     return {
       period: { kind: p.kind, from: p.start.toISOString(), to: new Date(last).toISOString() },
-      revenue: revenueOf(completed), revenuePrev: revenueOf(completedPrev),
+      revenue: revenueOf(completed, forfeited), revenuePrev: revenueOf(completedPrev, forfeitedIn(p.prevStart, p.prevEnd)),
+      forfeitedDeposits: forfeitOf(forfeited),
       done: completed.length, donePrev: completedPrev.length,
       avgHours: avgHours(completed), avgHoursPrev: avgHours(completedPrev),
       rating: avgStars(completed),
@@ -1047,17 +1160,14 @@ export const mockApi = {
     const within = (v) => Boolean(v) && new Date(v).getTime() >= p.start.getTime() && new Date(v).getTime() < p.end.getTime();
     const assignmentsOf = (t) => [...(t.assignmentLog || []), ...(t.assignment ? [t.assignment] : [])];
     const related = (t) => within(t.createdAt) || within(t.completedAt) || assignmentsOf(t).some((a) => within(a.assignedAt))
-      || ['CHO_THANH_TOAN', 'CHO_XAC_NHAN', 'DA_THU'].includes(t.payment?.status);
+      || ['CHO_THANH_TOAN', 'CHO_XAC_NHAN', 'DA_THU'].includes(t.payment?.status) || within(t.deposit?.settledAt);
     const amountsOf = (t) => {
       const items = t.quotes.filter((q) => q.status === 'DA_DUYET' || q.status === 'DUYET_MOT_PHAN').flatMap((q) => q.items.filter((i) => i.selected));
       const sum = (list) => list.reduce((s, i) => s + i.unitPrice * i.qty, 0);
-      const lateFee = t.lateRescheduleFee || 0;
-      const rejected = t.quotes.some((q) => q.type === 'CHINH' && q.status === 'TU_CHOI');
       return {
         serviceAmount: sum(items.filter((i) => i.kind !== 'part')),
         partsAmount: sum(items.filter((i) => i.kind === 'part')),
-        surveyFee: t.payment && rejected && !t.isWarranty ? Math.max(t.payment.amount - lateFee, 0) : 0,
-        lateFee,
+        surveyFee: t.status === STATUS.HOAN_TAT && mainQuoteRejected(t) && !t.isWarranty ? ticketRevenue(t) : 0,
         parts: items.filter((i) => i.kind === 'part').map((i) => ({ name: i.name, qty: i.qty, unitPrice: i.unitPrice })),
       };
     };
@@ -1078,8 +1188,11 @@ export const mockApi = {
         techId: t.assignment?.techId ?? null,
         appointmentAt: t.assignment?.appointmentAt || t.slotStart,
         ...amountsOf(t),
-        amount: t.payment ? t.payment.amount : null,
-        payment: t.payment ? { method: t.payment.method, status: t.payment.status, paidAt: t.payment.paidAt || null, confirmedAt: t.payment.confirmedAt || null, reconciledAt: t.payment.reconciledAt || null } : null,
+        amount: t.payment ? ticketRevenue(t) : null,
+        depositApplied: t.deposit?.status === 'DA_TRU' ? t.deposit.amount : 0,
+        deposit: t.deposit ? { amount: t.deposit.amount, status: t.deposit.status, confirmedAt: t.deposit.confirmedAt || null, settledAt: t.deposit.settledAt || null } : null,
+        cancel: t.cancel || null,
+        payment: t.payment ? { amount: t.payment.amount, method: t.payment.method, status: t.payment.status, paidAt: t.payment.paidAt || null, confirmedAt: t.payment.confirmedAt || null, reconciledAt: t.payment.reconciledAt || null } : null,
         review: t.review ? { stars: t.review.stars, comment: t.review.comment || '', at: t.review.at } : null,
         assignments: assignmentsOf(t).map((a) => ({ techId: a.techId, assignedAt: a.assignedAt, result: a.result, respondedAt: a.respondedAt })),
       })),
@@ -1096,7 +1209,8 @@ function applyQuoteDecision(db, t, q, actor, decision, itemIds, reason) {
     q.rejectReason = reason.trim();
     q.items.forEach((i) => { i.selected = false; });
     if (q.type === 'CHINH') {
-      transition(db, t, STATUS.CHO_THANH_TOAN, actor, t.isWarranty ? 'Khách từ chối báo giá' : 'Khách từ chối báo giá, thu phí khảo sát');
+      const fee = depositHeld(t) ? ', phí giữ lịch được tính là phí khảo sát' : ', thu phí khảo sát';
+      transition(db, t, STATUS.CHO_THANH_TOAN, actor, `Khách từ chối báo giá${t.isWarranty ? '' : fee}`);
       openPayment(db, t, actor);
     } else {
       transition(db, t, STATUS.DANG_THUC_HIEN, actor, 'Khách từ chối báo giá bổ sung, tiếp tục hạng mục đã duyệt');

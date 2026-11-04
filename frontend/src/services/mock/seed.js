@@ -23,13 +23,13 @@ export const CATEGORIES = [
 export const SERVICES = [
   { id: 'dv-win', name: 'Cài đặt Windows và driver đầy đủ', categoryCode: 'CAI_HDH', price: 250000, durationMin: 90, warrantyDays: 7, active: true },
   { id: 'dv-office', name: 'Cài đặt phần mềm văn phòng', categoryCode: 'PHAN_MEM', price: 100000, durationMin: 45, warrantyDays: 7, active: true },
-  { id: 'dv-virus', name: 'Diệt virus và làm sạch hệ thống', categoryCode: 'VIRUS', price: 150000, durationMin: 60, warrantyDays: 30, active: true },
-  { id: 'dv-mang', name: 'Khắc phục sự cố mạng, Wi-Fi', categoryCode: 'MANG', price: 150000, durationMin: 60, warrantyDays: 7, active: true },
+  { id: 'dv-virus', name: 'Diệt virus và làm sạch hệ thống', categoryCode: 'VIRUS', price: 200000, durationMin: 60, warrantyDays: 30, active: true },
+  { id: 'dv-mang', name: 'Khắc phục sự cố mạng, Wi-Fi', categoryCode: 'MANG', price: 200000, durationMin: 60, warrantyDays: 7, active: true },
   { id: 'dv-toiuu', name: 'Tối ưu máy chạy chậm', categoryCode: 'MAY_CHAM', price: 150000, durationMin: 60, warrantyDays: 14, active: true },
-  { id: 'dv-vesinh', name: 'Vệ sinh và tra keo tản nhiệt laptop', categoryCode: 'MAY_CHAM', price: 180000, durationMin: 60, warrantyDays: 30, active: true },
-  { id: 'dv-nguon', name: 'Kiểm tra, sửa lỗi không lên nguồn', categoryCode: 'NGUON', price: 200000, durationMin: 90, warrantyDays: 30, active: true },
-  { id: 'dv-dulieu', name: 'Khôi phục dữ liệu ổ cứng, USB', categoryCode: 'DU_LIEU', price: 400000, durationMin: 120, warrantyDays: 0, active: true },
-  { id: 'dv-lapdat', name: 'Công lắp đặt, nâng cấp linh kiện', categoryCode: 'PHAN_CUNG', price: 120000, durationMin: 45, warrantyDays: 30, active: true },
+  { id: 'dv-vesinh', name: 'Vệ sinh và tra keo tản nhiệt laptop', categoryCode: 'MAY_CHAM', price: 250000, durationMin: 60, warrantyDays: 30, active: true },
+  { id: 'dv-nguon', name: 'Kiểm tra, sửa lỗi không lên nguồn', categoryCode: 'NGUON', price: 300000, durationMin: 90, warrantyDays: 30, active: true },
+  { id: 'dv-dulieu', name: 'Khôi phục dữ liệu ổ cứng, USB', categoryCode: 'DU_LIEU', price: 500000, durationMin: 120, warrantyDays: 0, active: true },
+  { id: 'dv-lapdat', name: 'Công lắp đặt, nâng cấp linh kiện', categoryCode: 'PHAN_CUNG', price: 150000, durationMin: 45, warrantyDays: 30, active: true },
   { id: 'dv-kiemtra', name: 'Kiểm tra tổng quát', categoryCode: 'KHAC', price: 100000, durationMin: 60, warrantyDays: 0, active: true },
 ];
 
@@ -46,6 +46,7 @@ export const PARTS = [
 export const DEFAULT_CONFIG = {
   surveyFee: 50000,
   freeCancelHours: 2,
+  depositMinutes: 30,
   techResponseMinutes: 15,
   travelBufferMinutes: 30,
   reviewWindowDays: 7,
@@ -123,6 +124,19 @@ function partItem(partId, selected = true) {
   return { id: `${partId}-${Math.random().toString(36).slice(2, 7)}`, kind: 'part', refId: p.id, name: p.name, qty: 1, unitPrice: p.price, warrantyDays: p.warrantyDays, selected };
 }
 
+const LAN = 'Trần Thị Lan';
+const DEPOSIT_NOTE = 'Đã nhận phí giữ lịch 50.000đ';
+
+/** Phí giữ lịch của phiếu: khách chuyển lúc reported, ĐPV xác nhận lúc confirmed, khoản tiền kết thúc lúc settled. */
+function deposit(status, { reported, confirmed, settled, settledBy = '' } = {}) {
+  return {
+    amount: DEFAULT_CONFIG.surveyFee, status,
+    reportedAt: reported ? iso(reported) : null,
+    confirmedAt: confirmed ? iso(confirmed) : null, confirmedByName: confirmed ? LAN : '',
+    settledAt: settled ? iso(settled) : null, settledByName: settledBy,
+  };
+}
+
 function history(steps) {
   return steps.map(([status, t, by, note]) => ({ status, at: iso(t), by, note: note || '' }));
 }
@@ -165,6 +179,7 @@ function baseTicket(o) {
     completedAt: null,
     isWarranty: false,
     warrantyOf: null,
+    deposit: null,
   };
 }
 
@@ -197,8 +212,28 @@ export function buildSeed(nowDate = new Date()) {
       const id = nextId(created);
       const t = baseTicket({ id, customerId: cust.id, deviceId: dev.id, categoryCode: cat, status: cancelled ? STATUS.DA_HUY : STATUS.HOAN_TAT, createdAt: created, slotStart: appt, description: `Yêu cầu ${CATEGORIES.find((c) => c.code === cat).name.toLowerCase()}.` });
       if (cancelled) {
-        t.history = history([[STATUS.MOI, created, cust.name], [STATUS.DA_HUY, created + 2 * HOUR, cust.name, 'Khách hủy']]);
-        t.cancel = { by: cust.id, reason: 'Đã tự xử lý được', fee: 0, at: iso(created + 2 * HOUR) };
+        const kind = ['unpaid', 'refund', 'forfeit'][Math.floor(r() * 3)];
+        const steps = [[STATUS.MOI, created, cust.name]];
+        let cancel;
+        if (kind === 'unpaid') {
+          const end = created + DEFAULT_CONFIG.depositMinutes * MIN;
+          t.deposit = deposit('KHONG_PHAT_SINH', { settled: end });
+          cancel = { by: null, byName: 'Hệ thống', reason: 'Quá hạn thanh toán phí giữ lịch', fee: 0, at: end };
+        } else if (kind === 'refund') {
+          const end = created + 20 * MIN;
+          t.deposit = deposit('DA_HOAN', { reported: created + 3 * MIN, confirmed: created + 8 * MIN, settled: end + 3 * HOUR, settledBy: LAN });
+          steps.push([STATUS.MOI, created + 8 * MIN, LAN, DEPOSIT_NOTE]);
+          cancel = { by: cust.id, byName: cust.name, reason: 'Đã tự xử lý được', fee: 0, at: end };
+        } else {
+          const end = created + 2 * HOUR;
+          t.deposit = deposit('KHONG_HOAN', { reported: created + 3 * MIN, confirmed: created + 8 * MIN, settled: end });
+          steps.push([STATUS.MOI, created + 8 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 10 * MIN, LAN]);
+          cancel = { by: cust.id, byName: cust.name, reason: 'Đổi ý, không cần sửa nữa', fee: DEFAULT_CONFIG.surveyFee, at: end };
+        }
+        steps.push([STATUS.DA_HUY, cancel.at, cancel.byName, cancel.reason]);
+        if (kind === 'refund') steps.push([STATUS.DA_HUY, cancel.at + 3 * HOUR, LAN, DEPOSIT_NOTE.replace('nhận', 'hoàn')]);
+        t.history = history(steps);
+        t.cancel = { ...cancel, at: iso(cancel.at) };
       } else {
         const svcId = CATEGORIES.find((c) => c.code === cat).serviceId;
         const items = [serviceItem(svcId)];
@@ -214,26 +249,29 @@ export function buildSeed(nowDate = new Date()) {
         t.assignment = { techId: tech.id, appointmentAt: iso(appt), assignedAt: iso(created + 20 * MIN), deadline: iso(created + 35 * MIN), result: 'NHAN', respondedAt: iso(created + 28 * MIN) };
         t.checkInAt = iso(appt);
         t.quotes = [{ id: `bg-${id}`, type: 'CHINH', status: rejected ? 'TU_CHOI' : 'DA_DUYET', items, note: '', createdAt: iso(appt + 20 * MIN), createdBy: tech.id, decidedAt: iso(appt + 30 * MIN), rejectReason: rejected ? 'Chi phí cao hơn dự kiến' : '' }];
-        const amount = rejected ? DEFAULT_CONFIG.surveyFee : items.reduce((s, i) => s + i.unitPrice, 0);
+        const completed = rejected ? appt + 30 * MIN : done + 10 * MIN;
+        t.deposit = deposit('DA_TRU', { reported: created + 3 * MIN, confirmed: created + 8 * MIN, settled: completed });
         const method = r() < 0.55 ? 'CHUYEN_KHOAN' : 'TIEN_MAT';
         t.photosBefore = rejected ? [] : ['mau'];
         t.photosAfter = rejected ? [] : ['mau'];
         t.acceptance = rejected ? null : { result: 'DAT', at: iso(done) };
         const reconciled = method === 'TIEN_MAT' && d > 3;
-        t.payment = {
-          amount, method, status: method === 'TIEN_MAT' ? (reconciled ? 'DA_DOI_SOAT' : 'DA_THU') : 'DA_XAC_NHAN', paidAt: iso(done + 10 * MIN),
-          confirmedBy: method === 'TIEN_MAT' ? tech.userId : 'u-dpv1', confirmedAt: iso(done + 10 * MIN), ...(reconciled ? { reconciledAt: iso(done + DAY) } : {}),
+        t.payment = rejected ? { amount: 0, method: null, status: 'MIEN_PHI', paidAt: iso(completed) } : {
+          amount: items.reduce((s, i) => s + i.unitPrice, 0) - DEFAULT_CONFIG.surveyFee,
+          method, status: method === 'TIEN_MAT' ? (reconciled ? 'DA_DOI_SOAT' : 'DA_THU') : 'DA_XAC_NHAN', paidAt: iso(completed),
+          confirmedBy: method === 'TIEN_MAT' ? tech.userId : 'u-dpv1', confirmedAt: iso(completed), ...(reconciled ? { reconciledAt: iso(done + DAY) } : {}),
         };
-        t.completedAt = iso(done + 10 * MIN);
+        t.completedAt = iso(completed);
         t.history = history([
-          [STATUS.MOI, created, cust.name], [STATUS.DA_TIEP_NHAN, created + 10 * MIN, 'Trần Thị Lan'],
+          [STATUS.MOI, created, cust.name], [STATUS.MOI, created + 8 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 10 * MIN, LAN],
           ...(missed ? [[STATUS.DA_PHAN_CONG, created + 12 * MIN, 'Trần Thị Lan'], [STATUS.DA_TIEP_NHAN, answered, 'Hệ thống', missed === 'TU_CHOI' ? 'KTV từ chối' : 'KTV quá hạn phản hồi, đã thu hồi phân công']] : []),
           [STATUS.DA_PHAN_CONG, created + 20 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 28 * MIN, 'KTV'],
           [STATUS.DANG_KHAO_SAT, appt, 'KTV'], [STATUS.CHO_DUYET_BAO_GIA, appt + 20 * MIN, 'KTV'],
           ...(rejected
-            ? [[STATUS.CHO_THANH_TOAN, appt + 30 * MIN, cust.name, 'Khách từ chối báo giá']]
-            : [[STATUS.DANG_THUC_HIEN, appt + 30 * MIN, cust.name], [STATUS.CHO_NGHIEM_THU, done - 10 * MIN, 'KTV'], [STATUS.CHO_THANH_TOAN, done, cust.name]]),
-          [STATUS.HOAN_TAT, done + 10 * MIN, 'Hệ thống'],
+            ? [[STATUS.CHO_THANH_TOAN, completed, cust.name, 'Khách từ chối báo giá, phí giữ lịch được tính là phí khảo sát'],
+              [STATUS.HOAN_TAT, completed, cust.name, 'Đã trừ phí giữ lịch, không phải trả thêm']]
+            : [[STATUS.DANG_THUC_HIEN, appt + 30 * MIN, cust.name], [STATUS.CHO_NGHIEM_THU, done - 10 * MIN, 'KTV'], [STATUS.CHO_THANH_TOAN, done, cust.name],
+              [STATUS.HOAN_TAT, completed, 'Hệ thống']]),
         ]);
         if (!rejected && r() < 0.75) {
           const stars = r() < 0.12 ? 3 : r() < 0.3 ? 4 : 5;
@@ -259,11 +297,12 @@ export function buildSeed(nowDate = new Date()) {
     t.checklist = [{ text: 'Sao lưu dữ liệu', done: true }, { text: 'Lắp SSD và chuyển hệ điều hành', done: true }, { text: 'Vệ sinh, tra keo tản nhiệt', done: true }];
     t.photosBefore = ['mau']; t.photosAfter = ['mau'];
     t.acceptance = { result: 'DAT', at: iso(done) };
-    const amount = items.reduce((s, i) => s + i.unitPrice, 0);
+    t.deposit = deposit('DA_TRU', { reported: created + 3 * MIN, confirmed: created + 6 * MIN, settled: done });
+    const amount = items.reduce((s, i) => s + i.unitPrice, 0) - DEFAULT_CONFIG.surveyFee;
     t.payment = { amount, method: 'CHUYEN_KHOAN', status: 'DA_XAC_NHAN', paidAt: iso(done + 5 * MIN), confirmedBy: 'u-dpv1' };
     t.completedAt = iso(done + 10 * MIN);
     t.history = history([
-      [STATUS.MOI, created, kh1.name], [STATUS.DA_TIEP_NHAN, created + 8 * MIN, 'Trần Thị Lan'], [STATUS.DA_PHAN_CONG, created + 15 * MIN, 'Trần Thị Lan'],
+      [STATUS.MOI, created, kh1.name], [STATUS.MOI, created + 6 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 8 * MIN, LAN], [STATUS.DA_PHAN_CONG, created + 15 * MIN, LAN],
       [STATUS.KTV_DA_NHAN, created + 20 * MIN, 'Nguyễn Văn An'], [STATUS.DANG_KHAO_SAT, appt, 'Nguyễn Văn An'], [STATUS.CHO_DUYET_BAO_GIA, appt + 25 * MIN, 'Nguyễn Văn An'],
       [STATUS.DANG_THUC_HIEN, appt + 35 * MIN, kh1.name], [STATUS.CHO_NGHIEM_THU, done - 5 * MIN, 'Nguyễn Văn An'], [STATUS.CHO_THANH_TOAN, done, kh1.name],
       [STATUS.HOAN_TAT, done + 10 * MIN, 'Trần Thị Lan', 'Đã xác nhận chuyển khoản'],
@@ -281,10 +320,11 @@ export function buildSeed(nowDate = new Date()) {
     const t = baseTicket({ id, customerId: 'u-kh1', deviceId: 'tb2', categoryCode: 'NGUON', urgency: 'CAO', status: STATUS.CHO_DUYET_BAO_GIA, createdAt: created, slotStart: appt, description: 'PC bật lên quạt quay nhưng không lên hình, cần dùng gấp để làm việc.' });
     t.assignment = { techId: 'k1', appointmentAt: iso(appt), assignedAt: iso(created + 10 * MIN), deadline: iso(created + 25 * MIN), result: 'NHAN', respondedAt: iso(created + 14 * MIN) };
     t.checkInAt = iso(appt + 2 * MIN);
+    t.deposit = deposit('DA_XAC_NHAN', { reported: created + 2 * MIN, confirmed: created + 3 * MIN });
     t.quotes = [{ id: `bg-${id}`, type: 'CHINH', status: 'CHO_DUYET', items: [serviceItem('dv-nguon'), partItem('lk-nguon'), serviceItem('dv-toiuu')], note: 'Bộ nguồn cũ đã phù, không cấp đủ điện cho card màn hình.', createdAt: iso(now - 8 * MIN), createdBy: 'k1', decidedAt: null, rejectReason: '' }];
     t.photosBefore = ['mau'];
     t.history = history([
-      [STATUS.MOI, created, kh1.name], [STATUS.DA_TIEP_NHAN, created + 5 * MIN, 'Trần Thị Lan'], [STATUS.DA_PHAN_CONG, created + 10 * MIN, 'Trần Thị Lan'],
+      [STATUS.MOI, created, kh1.name], [STATUS.MOI, created + 3 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 5 * MIN, LAN], [STATUS.DA_PHAN_CONG, created + 10 * MIN, LAN],
       [STATUS.KTV_DA_NHAN, created + 14 * MIN, 'Nguyễn Văn An'], [STATUS.DANG_KHAO_SAT, appt + 2 * MIN, 'Nguyễn Văn An'], [STATUS.CHO_DUYET_BAO_GIA, now - 8 * MIN, 'Nguyễn Văn An'],
     ]);
     tickets.push(t);
@@ -296,6 +336,7 @@ export function buildSeed(nowDate = new Date()) {
     const created = now - 25 * MIN; const appt = at(1, 14, 0, nowDate);
     const id = nextId(created);
     const t = baseTicket({ id, customerId: 'u-kh1', deviceId: 'tb1', categoryCode: 'PHAN_MEM', status: STATUS.MOI, createdAt: created, slotStart: appt, description: 'Cần cài Office và phần mềm kế toán MISA cho máy mới.', aiResult: { categoryCode: 'PHAN_MEM', confidence: 0.82, urgency: 'TRUNG_BINH', reason: 'Mô tả có 3 dấu hiệu khớp với loại sự cố này.', state: 'ok', promptVersion: 'v1', ms: 740 } });
+    t.deposit = deposit('CHO_XAC_NHAN', { reported: created + 4 * MIN });
     t.history = history([[STATUS.MOI, created, kh1.name]]);
     tickets.push(t);
   }
@@ -305,6 +346,7 @@ export function buildSeed(nowDate = new Date()) {
     const created = now - 12 * MIN; const appt = at(1, 9, 30, nowDate);
     const id = nextId(created);
     const t = baseTicket({ id, customerId: 'u-kh3', deviceId: 'tb4', categoryCode: 'KHAC', status: STATUS.MOI, createdAt: created, slotStart: appt, description: 'Máy hay tự tắt khi đang dùng, không rõ lỗi gì.', aiResult: { categoryCode: 'KHAC', confidence: 0.41, urgency: 'TRUNG_BINH', reason: 'Không nhận ra từ khóa đặc trưng của loại sự cố nào.', state: 'low_confidence', promptVersion: 'v1', ms: 910 } });
+    t.deposit = deposit('CHO_THANH_TOAN');
     t.history = history([[STATUS.MOI, created, 'Lê Minh Châu']]);
     tickets.push(t);
   }
@@ -314,7 +356,8 @@ export function buildSeed(nowDate = new Date()) {
     const created = now - 50 * MIN; const appt = at(0, 16, 0, nowDate) > now + 3 * HOUR ? at(0, 16, 0, nowDate) : at(1, 10, 0, nowDate);
     const id = nextId(created);
     const t = baseTicket({ id, customerId: 'u-kh2', deviceId: 'tb3', categoryCode: 'VIRUS', urgency: 'CAO', status: STATUS.DA_TIEP_NHAN, createdAt: created, slotStart: appt, description: 'Máy hiện thông báo đòi tiền chuộc, file Word không mở được. Cần xử lý gấp.' });
-    t.history = history([[STATUS.MOI, created, 'Trần Thị Bình'], [STATUS.DA_TIEP_NHAN, created + 6 * MIN, 'Trần Thị Lan']]);
+    t.deposit = deposit('DA_XAC_NHAN', { reported: created + 2 * MIN, confirmed: created + 4 * MIN });
+    t.history = history([[STATUS.MOI, created, 'Trần Thị Bình'], [STATUS.MOI, created + 4 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 6 * MIN, LAN]]);
     tickets.push(t);
   }
 
@@ -324,7 +367,8 @@ export function buildSeed(nowDate = new Date()) {
     const id = nextId(created);
     const t = baseTicket({ id, customerId: 'u-kh4', deviceId: 'tb5', categoryCode: 'CAI_HDH', status: STATUS.DA_PHAN_CONG, createdAt: created, slotStart: appt, description: 'Muốn cài lại Windows 11 sạch, giữ lại dữ liệu ổ D.' });
     t.assignment = { techId: 'k1', appointmentAt: iso(appt), assignedAt: iso(now - 4 * MIN), deadline: iso(now + 11 * MIN), result: null, respondedAt: null };
-    t.history = history([[STATUS.MOI, created, 'Võ Thị Dung'], [STATUS.DA_TIEP_NHAN, created + 10 * MIN, 'Trần Thị Lan'], [STATUS.DA_PHAN_CONG, now - 4 * MIN, 'Trần Thị Lan']]);
+    t.deposit = deposit('DA_XAC_NHAN', { reported: created + 5 * MIN, confirmed: created + 8 * MIN });
+    t.history = history([[STATUS.MOI, created, 'Võ Thị Dung'], [STATUS.MOI, created + 8 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 10 * MIN, LAN], [STATUS.DA_PHAN_CONG, now - 4 * MIN, 'Trần Thị Lan']]);
     tickets.push(t);
     notifications.push({ id: 'tb-n2', userId: 'u-ktv1', title: 'Việc mới được phân công', body: `Bạn được phân công phiếu ${id}. Vui lòng nhận hoặc từ chối trong 15 phút.`, ticketId: id, read: false, createdAt: iso(now - 4 * MIN) });
   }
@@ -335,7 +379,8 @@ export function buildSeed(nowDate = new Date()) {
     const id = nextId(created);
     const t = baseTicket({ id, customerId: 'u-kh5', deviceId: 'tb6', categoryCode: 'MANG', address: '9 Xô Viết Nghệ Tĩnh', ward: 'Thạnh Mỹ Tây', status: STATUS.KTV_DA_NHAN, createdAt: created, slotStart: appt, description: 'Wifi trong nhà chập chờn, phòng ngủ không bắt được sóng.' });
     t.assignment = { techId: 'k1', appointmentAt: iso(appt), assignedAt: iso(created + 30 * MIN), deadline: iso(created + 45 * MIN), result: 'NHAN', respondedAt: iso(created + 35 * MIN) };
-    t.history = history([[STATUS.MOI, created, 'Hoàng Gia Bảo'], [STATUS.DA_TIEP_NHAN, created + 20 * MIN, 'Trần Thị Lan'], [STATUS.DA_PHAN_CONG, created + 30 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 35 * MIN, 'Nguyễn Văn An']]);
+    t.deposit = deposit('DA_XAC_NHAN', { reported: created + 10 * MIN, confirmed: created + 15 * MIN });
+    t.history = history([[STATUS.MOI, created, 'Hoàng Gia Bảo'], [STATUS.MOI, created + 15 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 20 * MIN, LAN], [STATUS.DA_PHAN_CONG, created + 30 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 35 * MIN, 'Nguyễn Văn An']]);
     tickets.push(t);
   }
 
@@ -348,7 +393,8 @@ export function buildSeed(nowDate = new Date()) {
     t.checkInAt = iso(appt);
     t.quotes = [{ id: `bg-${id}`, type: 'CHINH', status: 'DA_DUYET', items: [serviceItem('dv-dulieu')], note: '', createdAt: iso(appt + 15 * MIN), createdBy: 'k2', decidedAt: iso(appt + 20 * MIN), rejectReason: '' }];
     t.photosBefore = ['mau'];
-    t.history = history([[STATUS.MOI, created, 'Lê Minh Châu'], [STATUS.DA_TIEP_NHAN, created + 5 * MIN, 'Trần Thị Lan'], [STATUS.DA_PHAN_CONG, created + 10 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 12 * MIN, 'Lê Hoàng Phúc'], [STATUS.DANG_KHAO_SAT, appt, 'Lê Hoàng Phúc'], [STATUS.CHO_DUYET_BAO_GIA, appt + 15 * MIN, 'Lê Hoàng Phúc'], [STATUS.DANG_THUC_HIEN, appt + 20 * MIN, 'Lê Minh Châu']]);
+    t.deposit = deposit('DA_XAC_NHAN', { reported: created + 2 * MIN, confirmed: created + 3 * MIN });
+    t.history = history([[STATUS.MOI, created, 'Lê Minh Châu'], [STATUS.MOI, created + 3 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 5 * MIN, LAN], [STATUS.DA_PHAN_CONG, created + 10 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 12 * MIN, 'Lê Hoàng Phúc'], [STATUS.DANG_KHAO_SAT, appt, 'Lê Hoàng Phúc'], [STATUS.CHO_DUYET_BAO_GIA, appt + 15 * MIN, 'Lê Hoàng Phúc'], [STATUS.DANG_THUC_HIEN, appt + 20 * MIN, 'Lê Minh Châu']]);
     tickets.push(t);
   }
 
@@ -363,9 +409,24 @@ export function buildSeed(nowDate = new Date()) {
     t.quotes = [{ id: `bg-${id}`, type: 'CHINH', status: 'DA_DUYET', items, note: '', createdAt: iso(appt + 10 * MIN), createdBy: 'k3', decidedAt: iso(appt + 15 * MIN), rejectReason: '' }];
     t.photosBefore = ['mau']; t.photosAfter = ['mau'];
     t.acceptance = { result: 'DAT', at: iso(done) };
-    t.payment = { amount: items.reduce((s, i) => s + i.unitPrice, 0), method: 'CHUYEN_KHOAN', status: 'CHO_XAC_NHAN', paidAt: iso(done + 6 * MIN) };
-    t.history = history([[STATUS.MOI, created, 'Trần Thị Bình'], [STATUS.DA_TIEP_NHAN, created + 5 * MIN, 'Trần Thị Lan'], [STATUS.DA_PHAN_CONG, created + 10 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 12 * MIN, 'Trần Quang Huy'], [STATUS.DANG_KHAO_SAT, appt, 'Trần Quang Huy'], [STATUS.CHO_DUYET_BAO_GIA, appt + 10 * MIN, 'Trần Quang Huy'], [STATUS.DANG_THUC_HIEN, appt + 15 * MIN, 'Trần Thị Bình'], [STATUS.CHO_NGHIEM_THU, done - 5 * MIN, 'Trần Quang Huy'], [STATUS.CHO_THANH_TOAN, done, 'Trần Thị Bình']]);
+    t.deposit = deposit('DA_TRU', { reported: created + 2 * MIN, confirmed: created + 3 * MIN, settled: done });
+    t.payment = { amount: items.reduce((s, i) => s + i.unitPrice, 0) - DEFAULT_CONFIG.surveyFee, method: 'CHUYEN_KHOAN', status: 'CHO_XAC_NHAN', paidAt: iso(done + 6 * MIN) };
+    t.history = history([[STATUS.MOI, created, 'Trần Thị Bình'], [STATUS.MOI, created + 3 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_TIEP_NHAN, created + 5 * MIN, LAN], [STATUS.DA_PHAN_CONG, created + 10 * MIN, 'Trần Thị Lan'], [STATUS.KTV_DA_NHAN, created + 12 * MIN, 'Trần Quang Huy'], [STATUS.DANG_KHAO_SAT, appt, 'Trần Quang Huy'], [STATUS.CHO_DUYET_BAO_GIA, appt + 10 * MIN, 'Trần Quang Huy'], [STATUS.DANG_THUC_HIEN, appt + 15 * MIN, 'Trần Thị Bình'], [STATUS.CHO_NGHIEM_THU, done - 5 * MIN, 'Trần Quang Huy'], [STATUS.CHO_THANH_TOAN, done, 'Trần Thị Bình']]);
     tickets.push(t);
+  }
+
+  // 10. Khách hủy khi cửa hàng chưa tiếp nhận, phí giữ lịch chờ hoàn
+  {
+    const created = Math.min(at(0, 7, 15, nowDate), now - 3 * HOUR); const end = created + 40 * MIN;
+    const id = nextId(created);
+    const t = baseTicket({ id, customerId: 'u-kh4', deviceId: 'tb5', categoryCode: 'VIRUS', status: STATUS.DA_HUY, createdAt: created, slotStart: at(1, 10, 0, nowDate), description: 'Trình duyệt tự mở trang quảng cáo, máy chậm hẳn.' });
+    const reason = 'Có việc đột xuất, sẽ đặt lại sau';
+    t.deposit = deposit('CHO_HOAN', { reported: created + 3 * MIN, confirmed: created + 6 * MIN });
+    t.cancel = { by: 'u-kh4', byName: 'Võ Thị Dung', reason, fee: 0, at: iso(end) };
+    t.updatedAt = iso(end);
+    t.history = history([[STATUS.MOI, created, 'Võ Thị Dung'], [STATUS.MOI, created + 6 * MIN, LAN, DEPOSIT_NOTE], [STATUS.DA_HUY, end, 'Võ Thị Dung', reason]]);
+    tickets.push(t);
+    notifications.push({ id: 'tb-n4', userId: 'u-dpv1', title: 'Phí giữ lịch cần hoàn', body: `Phiếu ${id} đã hủy khi cửa hàng chưa tiếp nhận, cần chuyển trả 50.000đ cho khách.`, ticketId: id, read: false, createdAt: iso(end) });
   }
 
   // Cập nhật số lượt đánh giá của KTV theo dữ liệu sinh ra
@@ -379,7 +440,7 @@ export function buildSeed(nowDate = new Date()) {
   notifications.push({ id: 'tb-n3', userId: 'u-dpv1', title: 'Phiếu mới cần tiếp nhận', body: 'Có 2 phiếu mới đang chờ tiếp nhận trên bảng điều phối.', ticketId: null, read: false, createdAt: iso(now - 12 * MIN) });
 
   return {
-    version: 1,
+    version: 2,
     config: structuredClone(DEFAULT_CONFIG),
     users: USERS.map(withAccount),
     technicians,

@@ -47,7 +47,7 @@ export function TicketTimeline({ ticket }) {
   );
 }
 
-export function QuoteTable({ quote, selectable, selected, onToggle, surveyFee, showSurveyFee }) {
+export function QuoteTable({ quote, selectable, selected, onToggle, surveyFee, showSurveyFee, deposit = 0 }) {
   const total = selectable ? quote.items.filter((i) => selected.includes(i.id)).reduce((s, i) => s + i.unitPrice * i.qty, 0) : quoteTotal(quote.items, quote.status !== 'CHO_DUYET');
   return (
     <div className="stack-sm">
@@ -71,7 +71,7 @@ export function QuoteTable({ quote, selectable, selected, onToggle, surveyFee, s
           </Row>
         );
       })}
-      {showSurveyFee && (
+      {showSurveyFee && !deposit && (
         <div className="row" style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--success-bg)' }}>
           <div className="grow"><div className="strong" style={{ fontSize: 14, color: 'var(--success)' }}>Phí khảo sát</div><div className="tiny" style={{ color: 'var(--success)' }}>Miễn phí khi bạn duyệt báo giá, chỉ thu khi từ chối</div></div>
           <span className="price strike">{money(surveyFee)}</span>
@@ -81,6 +81,12 @@ export function QuoteTable({ quote, selectable, selected, onToggle, surveyFee, s
         <span className="strong">Tổng cộng</span>
         <Money value={total} className="" />
       </div>
+      {showSurveyFee && deposit > 0 && (
+        <>
+          <div className="row-between small muted" style={{ padding: '0 4px' }}><span>Phí giữ lịch đã trả trước</span><span>−{money(deposit)}</span></div>
+          <div className="row-between" style={{ padding: '0 4px' }}><span className="strong">Còn phải thanh toán</span><Money value={Math.max(total - deposit, 0)} /></div>
+        </>
+      )}
     </div>
   );
 }

@@ -124,7 +124,7 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await page.getByRole('button', { name: 'Nghiệm thu đạt' }).click();
     const due = await expectStatus(page, ticket.id, 'CHO_THANH_TOAN');
     const approved = due.quotes.flatMap((q) => q.items).filter((i) => i.selected).reduce((s, i) => s + i.unitPrice * i.qty, 0);
-    expect(due.payment.amount, 'cộng cả báo giá chính và bổ sung').toBe(approved);
+    expect(due.payment.amount, 'cộng cả báo giá chính và bổ sung, trừ phí giữ lịch').toBe(approved - due.deposit.amount);
     await page.goto(`/khach/phieu/${ticket.id}/thanh-toan`);
     await page.getByRole('button', { name: 'Tiền mặt' }).click();
     await page.getByRole('button', { name: 'Trả tiền mặt cho kỹ thuật viên' }).click();

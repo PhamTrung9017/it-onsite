@@ -9,7 +9,7 @@ const VENV_PYTHON = process.platform === 'win32' ? '.venv\\Scripts\\python' : '.
 const RESET_COMMAND = process.env.E2E_RESET_COMMAND || `${VENV_PYTHON} -m app.seed demo`;
 export const PASSWORD = '123456';
 
-const MOCK_KEY = 'itonsite.mock.v1';
+const MOCK_KEY = 'itonsite.mock.v2';
 const MOCK_SESSION_KEY = 'itonsite.session.v1';
 const TOKEN_KEY = 'itonsite.tokens.v1';
 const ADMIN = 'qtv@demo.vn';

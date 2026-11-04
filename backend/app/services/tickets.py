@@ -16,12 +16,13 @@ from app.domain.rules import (
     cancellation_policy,
     has_conflict,
     off_duty,
+    reschedule_policy,
     review_policy,
     validate_review,
     validate_slot,
     warranty_status,
 )
-from app.domain.status import BUSY_STATUSES, Status
+from app.domain.status import BUSY_STATUSES, CANCELLABLE, DepositStatus, Status
 from app.domain.vietqr import build_vietqr
 from app.models import (
     Assignment,
@@ -45,6 +46,7 @@ from app.services.common import (
     amount_due,
     audit,
     can_view,
+    deposit_held,
     dispatcher_ids,
     find_ticket,
     load_config,
@@ -57,6 +59,7 @@ from app.services.common import (
     transition,
     utcnow,
 )
+from app.services.deposits import open_deposit, settle_on_cancel
 
 MAX_REQUEST_PHOTOS = 5
 AI_STATES = ("ok", "low_confidence", "failed")
@@ -198,10 +201,16 @@ def create_ticket(db: Session, user: User, data) -> Ticket:
     )
     for photo in data.photos:
         ticket.photos.append(Photo(kind="request", url=media.save_image(photo)))
+    open_deposit(ticket, config)
     audit(db, user, "TAO_PHIEU", ticket.id)
     notify(db, dispatcher_ids(db), "Phiếu mới cần tiếp nhận", f"{user.name} vừa gửi phiếu {ticket.id}.", ticket.id)
     notify(
-        db, [user.id], "Đã nhận yêu cầu", f"Phiếu {ticket.id} đã được ghi nhận. Điều phối viên sẽ phân công kỹ thuật viên sớm.", ticket.id
+        db,
+        [user.id],
+        "Đã nhận yêu cầu",
+        f"Phiếu {ticket.id} đã được ghi nhận. Vui lòng chuyển phí giữ lịch {money(config.survey_fee)} "
+        f"trong {config.deposit_minutes} phút để cửa hàng tiếp nhận.",
+        ticket.id,
     )
     return ticket
 
@@ -224,18 +233,20 @@ def appointment_of(ticket: Ticket) -> datetime:
 def ticket_policies(ticket: Ticket, config: BusinessConfig) -> dict:
     now = utcnow()
     return {
-        "policy": cancellation_policy(ticket.status, appointment_of(ticket), config, now).to_dict(),
+        "policy": cancellation_policy(ticket.status, deposit_held(ticket)).to_dict(),
+        "reschedulePolicy": reschedule_policy(ticket.status, appointment_of(ticket), config, now).to_dict(),
         "reviewPolicy": review_policy(ticket.status, ticket.review is not None, ticket.completed_at, config, now).to_dict(),
         "config": {
             "surveyFee": config.survey_fee,
             "freeCancelHours": config.free_cancel_hours,
+            "depositMinutes": config.deposit_minutes,
             "serviceHours": {"start": config.service_start, "end": config.service_end},
         },
     }
 
 
 def _owned_or_dispatcher(user: User, ticket: Ticket, message: str) -> bool:
-    """Trả về True khi chính khách hàng thao tác; điều phối viên thao tác thay thì khách không chịu phí (BR-03)."""
+    """Trả về True khi chính khách hàng thao tác, False khi điều phối viên thao tác thay."""
     require_roles(user, "KHACH", "DPV")
     if ticket.customer_id == user.id:
         return True
@@ -244,28 +255,37 @@ def _owned_or_dispatcher(user: User, ticket: Ticket, message: str) -> bool:
     return False
 
 
-def cancel_ticket(db: Session, user: User, ticket_id: str, reason: str) -> Ticket:
+def cancel_ticket(db: Session, user: User, ticket_id: str, reason: str, charge_customer: bool = False) -> Ticket:
+    """BR-03: khách hủy sau khi cửa hàng tiếp nhận thì mất phí giữ lịch.
+
+    Điều phối viên hủy thay: `charge_customer` khi khách yêu cầu hủy hoặc vắng mặt; cửa hàng chủ động hủy thì hoàn phí.
+    """
     ticket = find_ticket(db, ticket_id, lock=True)
     by_customer = _owned_or_dispatcher(user, ticket, "Bạn không có quyền hủy phiếu này.")
-    config = load_config(db)
-    policy = cancellation_policy(ticket.status, appointment_of(ticket), config, utcnow())
+    policy = cancellation_policy(ticket.status, deposit_held(ticket))
     if not policy.allowed:
         raise conflict(policy.reason)
     if not reason.strip():
         raise ApiError("Vui lòng cho biết lý do hủy.")
-    fee = policy.fee if by_customer else 0
+    forfeit = ticket.status != Status.MOI and (by_customer or charge_customer)
+    fee = settle_on_cancel(ticket, forfeit)
     ticket.cancel = {"by": user.id, "byName": user.name, "reason": reason.strip(), "fee": fee, "at": utcnow().isoformat()}
     transition(db, ticket, Status.DA_HUY, user, reason.strip())
+    if ticket.deposit and ticket.deposit.status == DepositStatus.CHO_HOAN:
+        notify(
+            db, dispatcher_ids(db), "Cần hoàn phí giữ lịch", f"Phiếu {ticket.id} đã hủy, cần chuyển trả phí giữ lịch cho khách.", ticket.id
+        )
     return ticket
 
 
 def reschedule_ticket(db: Session, user: User, ticket_id: str, slot_start: datetime) -> Ticket:
+    """BR-03: khách đổi lịch miễn phí khi còn đủ thời gian; điều phối viên đổi thay khách bất kỳ lúc nào trước check-in."""
     ticket = find_ticket(db, ticket_id, lock=True)
     by_customer = _owned_or_dispatcher(user, ticket, "Bạn không có quyền đổi lịch phiếu này.")
     config = load_config(db)
     now = utcnow()
-    policy = cancellation_policy(ticket.status, appointment_of(ticket), config, now)
-    if not policy.allowed:
+    policy = reschedule_policy(ticket.status, appointment_of(ticket), config, now)
+    if not policy.allowed and (by_customer or Status(ticket.status) not in CANCELLABLE):
         raise conflict(policy.reason)
     error = validate_slot(slot_start, config, now, get_settings().tz)
     if error:
@@ -285,12 +305,9 @@ def reschedule_ticket(db: Session, user: User, ticket_id: str, slot_start: datet
             f"Phiếu {ticket.id} đổi lịch hẹn, vui lòng xem giờ mới.",
             ticket.id,
         )
-    fee = policy.fee if by_customer else 0
     ticket.slot_start = slot_start
-    ticket.late_reschedule_fee += fee
     touch(ticket)
-    note = "Đổi lịch hẹn" + (f" (phí đổi lịch sát giờ {money(fee)})" if fee else "")
-    add_history(ticket, ticket.status, user.name, note)
+    add_history(ticket, ticket.status, user.name, "Đổi lịch hẹn")
     notify(
         db, [d for d in dispatcher_ids(db) if d != user.id], "Khách đổi lịch hẹn", f"Phiếu {ticket.id} đổi sang khung giờ mới.", ticket.id
     )
@@ -319,7 +336,9 @@ def apply_quote_decision(
         for item in quote.items:
             item.selected = False
         if quote.type == "CHINH":
-            note = "Khách từ chối báo giá" if ticket.is_warranty else "Khách từ chối báo giá, thu phí khảo sát"
+            note = "Khách từ chối báo giá"
+            if not ticket.is_warranty:
+                note += ", phí giữ lịch được tính là phí khảo sát" if deposit_held(ticket) else ", thu phí khảo sát"
             transition(db, ticket, Status.CHO_THANH_TOAN, actor, note, actor_name)
             open_payment(db, ticket, actor, config)
         else:

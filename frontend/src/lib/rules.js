@@ -5,20 +5,40 @@ const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
 const DAY = 24 * HOUR;
 
-/** BR-03: điều kiện hủy / đổi lịch và phí áp dụng. */
-export function cancellationPolicy(ticket, config, now = Date.now()) {
+/** Phí giữ lịch cửa hàng đã nhận của phiếu, được trừ vào số tiền thanh toán. */
+export function depositHeld(ticket) {
+  const d = ticket.deposit;
+  return d && (d.status === 'DA_XAC_NHAN' || d.status === 'DA_TRU') ? d.amount : 0;
+}
+
+/** Hạn khách chuyển phí giữ lịch; quá hạn chưa chuyển thì phiếu tự hủy. */
+export function depositDeadline(ticket, config) {
+  return new Date(new Date(ticket.createdAt).getTime() + config.depositMinutes * MINUTE).toISOString();
+}
+
+/** BR-03: hủy trước khi KTV check-in; cửa hàng đã tiếp nhận phiếu thì phí giữ lịch không được hoàn. */
+export function cancellationPolicy(ticket) {
+  if (!CANCELLABLE.includes(ticket.status)) {
+    return { allowed: false, fee: 0, reason: 'Kỹ thuật viên đã check-in, không thể hủy hoặc đổi lịch.' };
+  }
+  if (ticket.status === 'MOI') {
+    return { allowed: true, fee: 0, reason: 'Cửa hàng chưa tiếp nhận phiếu nên hủy miễn phí; phí giữ lịch đã chuyển được hoàn lại.' };
+  }
+  const deposit = depositHeld(ticket);
+  if (!deposit) return { allowed: true, fee: 0, reason: 'Hủy miễn phí.' };
+  return { allowed: true, fee: deposit, reason: 'Cửa hàng đã tiếp nhận phiếu nên phí giữ lịch không được hoàn khi hủy.' };
+}
+
+/** BR-03: khách đổi lịch miễn phí khi còn đủ thời gian trước giờ hẹn; sát giờ phải gọi cửa hàng. */
+export function reschedulePolicy(ticket, config, now = Date.now()) {
   if (!CANCELLABLE.includes(ticket.status)) {
     return { allowed: false, fee: 0, reason: 'Kỹ thuật viên đã check-in, không thể hủy hoặc đổi lịch.' };
   }
   const appointment = new Date(ticket.assignment?.appointmentAt || ticket.slotStart).getTime();
-  const free = appointment - now >= config.freeCancelHours * HOUR;
-  return {
-    allowed: true,
-    fee: free ? 0 : config.surveyFee,
-    reason: free
-      ? `Miễn phí vì còn ít nhất ${config.freeCancelHours} giờ trước giờ hẹn.`
-      : `Còn dưới ${config.freeCancelHours} giờ trước giờ hẹn nên tính phí khảo sát.`,
-  };
+  if (appointment - now >= config.freeCancelHours * HOUR) {
+    return { allowed: true, fee: 0, reason: `Đổi lịch miễn phí khi còn ít nhất ${config.freeCancelHours} giờ trước giờ hẹn.` };
+  }
+  return { allowed: false, fee: 0, reason: `Còn dưới ${config.freeCancelHours} giờ trước giờ hẹn, vui lòng gọi cửa hàng để đổi lịch.` };
 }
 
 /** Khung giờ đặt lịch hợp lệ: trong giờ phục vụ và cách hiện tại ít nhất leadHours. */
@@ -121,11 +141,13 @@ export function quoteTotal(items, onlySelected = false) {
   return items.filter((i) => !onlySelected || i.selected).reduce((sum, i) => sum + i.unitPrice * i.qty, 0);
 }
 
-/** BR-02: số tiền phải thanh toán của một phiếu. */
+export const mainQuoteRejected = (ticket) => ticket.quotes.some((q) => q.type === 'CHINH' && q.status === 'TU_CHOI');
+
+/** BR-02: số tiền khách còn phải thanh toán; phí giữ lịch đã trả được trừ vào, khách từ chối báo giá thì phí này là phí khảo sát. */
 export function amountDue(ticket, config) {
-  const main = ticket.quotes.find((q) => q.type === 'CHINH');
-  if (main && main.status === 'TU_CHOI') return ticket.isWarranty ? 0 : config.surveyFee;
-  return approvedTotal(ticket.quotes);
+  const deposit = depositHeld(ticket);
+  const total = mainQuoteRejected(ticket) ? (ticket.isWarranty ? 0 : deposit || config.surveyFee) : approvedTotal(ticket.quotes);
+  return Math.max(total - deposit, 0);
 }
 
 /** BR-07: kiểm tra phiếu bảo hành còn hiệu lực. */

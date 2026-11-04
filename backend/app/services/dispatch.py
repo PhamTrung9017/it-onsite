@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, not_found
 from app.domain.rules import Candidate, WorkSchedule, has_conflict, off_duty, rank_technicians, response_deadline, warranty_status
-from app.domain.status import CLOSED_STATUSES, Status
+from app.domain.status import CLOSED_STATUSES, DepositStatus, Status
 from app.models import Assignment, Category, Payment, Service, Technician, Ticket, User, WarrantyClaim
 from app.services.common import (
     audit,
@@ -22,6 +22,7 @@ from app.services.common import (
     transition,
     utcnow,
 )
+from app.services.deposits import sweep_unpaid
 from app.services.tickets import bookings, create_ticket_record
 
 BOARD_RECENT_DAYS = 2
@@ -54,6 +55,7 @@ def sweep_overdue_assignments(db: Session) -> int:
 def board(db: Session, user: User) -> list[Ticket]:
     require_roles(user, "DPV", "QTV")
     sweep_overdue_assignments(db)
+    sweep_unpaid(db)
     recent = utcnow() - timedelta(days=BOARD_RECENT_DAYS)
     return list(
         db.scalars(
@@ -69,6 +71,8 @@ def receive(db: Session, user: User, ticket_id: str, category_code: str, urgency
     require_roles(user, "DPV")
     ticket = find_ticket(db, ticket_id, lock=True)
     check_version(ticket, version)
+    if ticket.deposit and ticket.deposit.status != DepositStatus.DA_XAC_NHAN:
+        raise conflict("Cần xác nhận đã nhận phí giữ lịch trước khi tiếp nhận phiếu.")
     category = db.get(Category, category_code)
     if category is None:
         raise ApiError("Vui lòng chọn loại sự cố.")

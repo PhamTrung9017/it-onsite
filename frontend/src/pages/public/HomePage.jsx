@@ -114,12 +114,12 @@ export default function HomePage() {
             <div>
               <span className="ico"><HandCoins aria-hidden /></span>
               <h3>Phí khảo sát {fee !== undefined ? money(fee) : ''}</h3>
-              <p>Được miễn khi bạn đồng ý báo giá. Chỉ thu khi bạn không sửa sau khi kỹ thuật viên đã kiểm tra.</p>
+              <p>Trả trước để giữ lịch và được trừ vào tổng tiền khi bạn đồng ý báo giá.</p>
             </div>
             <div>
               <span className="ico"><CalendarClock aria-hidden /></span>
               <h3>Hủy, đổi lịch linh hoạt</h3>
-              <p>Miễn phí khi thao tác trước giờ hẹn ít nhất {data?.config.freeCancelHours ?? 2} giờ.</p>
+              <p>Hủy trước khi cửa hàng tiếp nhận được hoàn phí; đổi lịch miễn phí trước giờ hẹn ít nhất {data?.config.freeCancelHours ?? 2} giờ.</p>
             </div>
             <div>
               <span className="ico"><ShieldCheck aria-hidden /></span>

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.domain.rules import WorkSchedule
-from app.domain.status import Status
+from app.domain.status import DepositStatus, Status
 
 Timestamp = DateTime(timezone=True)
 
@@ -35,7 +35,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
-    email: Mapped[str] = mapped_column(String(160))
+    email: Mapped[str | None] = mapped_column(String(160))
     phone: Mapped[str] = mapped_column(String(20), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
     roles: Mapped[list[str]] = mapped_column(ARRAY(String(10)))
@@ -170,7 +170,6 @@ class Ticket(Base):
     checklist: Mapped[list] = mapped_column(JSONB, default=list)
     acceptance: Mapped[dict | None] = mapped_column(JSONB)
     cancel: Mapped[dict | None] = mapped_column(JSONB)
-    late_reschedule_fee: Mapped[int] = mapped_column(Integer, default=0)
     onsite_code_hash: Mapped[str | None] = mapped_column(String(64))
     onsite_code_expires_at: Mapped[datetime | None] = mapped_column(Timestamp)
     onsite_code_attempts: Mapped[int] = mapped_column(SmallInteger, default=0)
@@ -187,6 +186,7 @@ class Ticket(Base):
     quotes: Mapped[list["Quote"]] = relationship(order_by="Quote.id", cascade="all, delete-orphan", lazy="selectin")
     photos: Mapped[list["Photo"]] = relationship(order_by="Photo.id", cascade="all, delete-orphan", lazy="selectin")
     payment: Mapped["Payment | None"] = relationship(cascade="all, delete-orphan", lazy="selectin")
+    deposit: Mapped["Deposit | None"] = relationship(cascade="all, delete-orphan", lazy="selectin")
     review: Mapped["Review | None"] = relationship(cascade="all, delete-orphan", lazy="selectin")
 
     @property
@@ -278,6 +278,25 @@ class Payment(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(Timestamp)
     reconciled_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     reconciled_at: Mapped[datetime | None] = mapped_column(Timestamp)
+
+
+class Deposit(Base):
+    """Phí giữ lịch: phí khảo sát khách chuyển khoản trước khi cửa hàng tiếp nhận phiếu."""
+
+    __tablename__ = "deposits"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="ck_deposits_amount"),
+        CheckConstraint(f"status IN ({', '.join(repr(s.value) for s in DepositStatus)})", name="ck_deposits_status"),
+    )
+
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), primary_key=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    reported_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    confirmed_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    confirmed_by_name: Mapped[str] = mapped_column(String(160), default="")
+    settled_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    settled_by_name: Mapped[str] = mapped_column(String(160), default="")
 
 
 class Review(Base):

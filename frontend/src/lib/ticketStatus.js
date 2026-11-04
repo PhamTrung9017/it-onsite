@@ -35,7 +35,30 @@ export const PAYMENT_STATUS_LABEL = {
   DA_THU: 'Đã thu tiền mặt',
   DA_XAC_NHAN: 'Đã xác nhận chuyển khoản',
   DA_DOI_SOAT: 'Đã đối soát tiền mặt',
-  MIEN_PHI: 'Không phát sinh chi phí',
+  MIEN_PHI: 'Không phải thanh toán thêm',
+};
+
+/** Trạng thái phí giữ lịch (phí khảo sát trả trước, BR-02, BR-03). */
+export const DEPOSIT_STATUS_LABEL = {
+  CHO_THANH_TOAN: 'Chờ khách chuyển khoản',
+  CHO_XAC_NHAN: 'Khách báo đã chuyển',
+  DA_XAC_NHAN: 'Đã nhận',
+  DA_TRU: 'Đã trừ vào tổng tiền',
+  KHONG_HOAN: 'Không hoàn',
+  CHO_HOAN: 'Chờ hoàn tiền',
+  DA_HOAN: 'Đã hoàn tiền',
+  KHONG_PHAT_SINH: 'Không phát sinh',
+};
+
+export const DEPOSIT_STATUS_TONE = {
+  CHO_THANH_TOAN: 'warning',
+  CHO_XAC_NHAN: 'accent',
+  DA_XAC_NHAN: 'success',
+  DA_TRU: 'success',
+  KHONG_HOAN: 'muted',
+  CHO_HOAN: 'danger',
+  DA_HOAN: 'muted',
+  KHONG_PHAT_SINH: 'muted',
 };
 
 export const PAYMENT_METHOD_LABEL = { TIEN_MAT: 'Tiền mặt', CHUYEN_KHOAN: 'Chuyển khoản VietQR' };
