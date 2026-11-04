@@ -14,7 +14,7 @@ router = APIRouter(tags=["Tài khoản"])
 
 @router.patch("/me")
 def update_profile(body: ProfileBody, user: CurrentUser, db: Db) -> dict:
-    account.update_profile(db, user, body.name, body.phone, body.address, body.ward)
+    account.update_profile(db, user, body.name, body.phone, body.address, body.ward, body.email)
     db.commit()
     return user_json(user)
 

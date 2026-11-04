@@ -116,8 +116,8 @@ export function RegisterPage() {
       <form className="stack" onSubmit={submit} noValidate>
         {error && <Alert tone="danger">{error}</Alert>}
         <Field label="Họ và tên" htmlFor="n"><div className="input-group"><User aria-hidden /><input id="n" className="input" autoComplete="name" value={form.name} onChange={set('name')} /></div></Field>
-        <Field label="Email" htmlFor="e"><div className="input-group"><Mail aria-hidden /><input id="e" type="email" className="input" autoComplete="email" value={form.email} onChange={set('email')} /></div></Field>
-        <Field label="Số điện thoại" htmlFor="p"><div className="input-group"><Phone aria-hidden /><input id="p" inputMode="tel" className="input" autoComplete="tel" value={form.phone} onChange={set('phone')} /></div></Field>
+        <Field label="Số điện thoại" htmlFor="p" hint="Dùng để đăng nhập và để kỹ thuật viên liên hệ"><div className="input-group"><Phone aria-hidden /><input id="p" inputMode="tel" className="input" autoComplete="tel" value={form.phone} onChange={set('phone')} /></div></Field>
+        <Field label="Email (không bắt buộc)" htmlFor="e" hint="Nhận thông báo, biên nhận và đặt lại mật khẩu qua email"><div className="input-group"><Mail aria-hidden /><input id="e" type="email" className="input" autoComplete="email" value={form.email} onChange={set('email')} /></div></Field>
         <Field label="Mật khẩu" htmlFor="pw" hint="Ít nhất 8 ký tự"><div className="input-group"><Lock aria-hidden /><input id="pw" type="password" className="input" autoComplete="new-password" value={form.password} onChange={set('password')} /></div></Field>
         <label className="check"><input type="checkbox" checked={form.consent} onChange={set('consent')} /><span>Tôi đồng ý với điều khoản dịch vụ và cho phép IT OnSite xử lý dữ liệu cá nhân để thực hiện yêu cầu hỗ trợ theo Luật Bảo vệ dữ liệu cá nhân.</span></label>
         <Button type="submit" size="lg" block loading={busy}>Tạo tài khoản</Button>
@@ -149,7 +149,7 @@ export function ForgotPasswordPage() {
     <AuthShell>
       <div>
         <h1>Quên mật khẩu</h1>
-        <p className="muted" style={{ marginTop: 6 }}>Nhập email đã đăng ký, chúng tôi sẽ gửi đường dẫn đặt lại mật khẩu.</p>
+        <p className="muted" style={{ marginTop: 6 }}>Nhập email đã đăng ký, chúng tôi sẽ gửi đường dẫn đặt lại mật khẩu. Tài khoản chưa có email, vui lòng gọi cửa hàng để được hỗ trợ.</p>
       </div>
       {sent ? (
         <Alert tone="success" title="Đã gửi yêu cầu" icon={KeyRound}>Nếu email này đã đăng ký, bạn sẽ nhận được đường dẫn đặt lại mật khẩu trong vài phút.</Alert>

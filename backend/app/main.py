@@ -52,11 +52,13 @@ def jsonable_errors(exc: RequestValidationError) -> list[dict]:
     return [{"field": ".".join(str(p) for p in err.get("loc", [])), "message": err.get("msg", "")} for err in exc.errors()]
 
 
+API_PREFIX = "/api/v1"
+
 for module in (auth, account, catalog, tickets, technician, dispatch, admin):
-    app.include_router(module.router, prefix="/api")
+    app.include_router(module.router, prefix=API_PREFIX)
 
 
-@app.get("/api/health", tags=["Hệ thống"])
+@app.get(f"{API_PREFIX}/health", tags=["Hệ thống"])
 def health() -> dict:
     with SessionLocal() as db:
         db.execute(text("SELECT 1"))

@@ -16,7 +16,7 @@ export default function ProfilePage() {
     const [devices, catalog] = await Promise.all([api.listDevices(), api.getCatalog()]);
     return { devices, areas: catalog.config.areas };
   }, []);
-  const [form, setForm] = useState({ name: user.name, phone: user.phone, address: user.address, ward: user.ward });
+  const [form, setForm] = useState({ name: user.name, email: user.email || '', phone: user.phone, address: user.address, ward: user.ward });
   const [dev, setDev] = useState(null);
   const [pw, setPw] = useState(null);
   const [del, setDel] = useState(null);
@@ -41,7 +41,7 @@ export default function ProfilePage() {
 
   return (
     <>
-      <PageHead title="Hồ sơ" sub={user.email} />
+      <PageHead title="Hồ sơ" sub={user.email || user.phone} />
       <div className="split">
         <div className="stack">
           <Card title="Thông tin liên hệ" footer={<Button icon={Save} loading={busy === 'profile'} onClick={saveProfile}>Lưu thay đổi</Button>}>
@@ -50,6 +50,7 @@ export default function ProfilePage() {
                 <Field label="Họ và tên" htmlFor="pn"><input id="pn" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
                 <Field label="Số điện thoại" htmlFor="pp"><input id="pp" className="input" inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
               </div>
+              <Field label="Email (không bắt buộc)" htmlFor="pe" hint="Nhận thông báo, biên nhận và đặt lại mật khẩu qua email"><input id="pe" type="email" className="input" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
               <div className="grid-2">
                 <Field label="Số nhà, tên đường" htmlFor="pa"><input id="pa" className="input" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
                 <Field label="Phường" htmlFor="pw"><select id="pw" className="select" value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })}><option value="">Chọn phường</option>{data.areas.map((a) => <option key={a}>{a}</option>)}</select></Field>

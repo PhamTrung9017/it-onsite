@@ -38,14 +38,14 @@ async function request(page, path, as = null) {
   return page.evaluate(async ({ path, as, password, tokenKey }) => {
     let token = JSON.parse(localStorage.getItem(tokenKey) || 'null')?.accessToken;
     if (as) {
-      const login = await fetch('/api/auth/login', {
+      const login = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: as, password }),
       });
       token = (await login.json()).accessToken;
     }
-    const response = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
     return response.json();
   }, { path, as, password: PASSWORD, tokenKey: TOKEN_KEY });
 }

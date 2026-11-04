@@ -22,7 +22,7 @@ export default function TechProfilePage() {
             <div className="grow">
               <h2>{user.name}</h2>
               <div className="row-sm small muted"><Stars value={tech.rating} size={14} />{tech.rating} · {tech.ratingCount} đánh giá</div>
-              <div className="small muted">{user.email} · {user.phone}</div>
+              <div className="small muted">{[user.email, user.phone].filter(Boolean).join(' · ')}</div>
             </div>
             <Badge tone={tech.active ? 'success' : 'muted'}>{tech.active ? 'Đang hoạt động' : 'Tạm ngưng'}</Badge>
           </div>

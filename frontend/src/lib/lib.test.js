@@ -3,7 +3,7 @@ import { buildVietQR, crc16, sanitizeContent } from './vietqr.js';
 import { canTransition, STATUS } from './ticketStatus.js';
 import {
   amountDue, canComplete, cancellationPolicy, depositDeadline, hasConflict, offDuty, rankTechnicians, reviewPolicy, validateReview, validateSchedule,
-  reschedulePolicy, validateSlot, warrantyStatus,
+  reportPeriod, reschedulePolicy, validateSlot, warrantyStatus,
 } from './rules.js';
 import { formatSchedule } from './format.js';
 import { classifyIssue, redactPersonalData } from './classifier.js';
@@ -172,5 +172,13 @@ describe('UC05 phân loại sự cố', () => {
     expect(classifyIssue('Wifi mất kết nối, router chớp đèn đỏ').categoryCode).toBe('MANG');
     expect(classifyIssue('Laptop không lên nguồn, cần gấp').urgency).toBe('CAO');
     expect(classifyIssue('abc xyz').confidence).toBeLessThan(0.6);
+  });
+});
+
+describe('UC21 kỳ báo cáo', () => {
+  it('khoảng ngày tùy chọn tính cả hai đầu, kỳ trước cùng độ dài', () => {
+    const p = reportPeriod({ from: '2026-10-05', to: '2026-10-11' });
+    expect(p.kind).toBe('range');
+    expect([p.start, p.end, p.prevStart]).toEqual([new Date(2026, 9, 5), new Date(2026, 9, 12), new Date(2026, 8, 28)]);
   });
 });

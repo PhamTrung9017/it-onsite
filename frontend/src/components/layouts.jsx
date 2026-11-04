@@ -52,7 +52,7 @@ function UserMenu() {
         <div className="menu" role="menu">
           <div style={{ padding: '8px 12px 10px' }}>
             <div className="strong">{user.name}</div>
-            <div className="tiny muted">{user.email} · {ROLE_LABEL[role]}</div>
+            <div className="tiny muted">{user.email || user.phone} · {ROLE_LABEL[role]}</div>
           </div>
           {user.roles.length > 1 && (
             <>

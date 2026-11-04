@@ -4,10 +4,10 @@ from tests.conftest import Api, tomorrow_at
 
 
 def test_profile_update_rules(client, khach):
-    assert khach.client.patch("/api/me", json={"phone": "0909000002"}, headers=khach.headers).status_code == 409
-    assert khach.client.patch("/api/me", json={"ward": "Thủ Đức"}, headers=khach.headers).status_code == 400
+    assert khach.client.patch("/api/v1/me", json={"phone": "0909000002"}, headers=khach.headers).status_code == 409
+    assert khach.client.patch("/api/v1/me", json={"ward": "Thủ Đức"}, headers=khach.headers).status_code == 400
     response = khach.client.patch(
-        "/api/me", json={"name": "Nguyễn Văn Anh B", "address": "5 Lê Lợi", "ward": "Sài Gòn"}, headers=khach.headers
+        "/api/v1/me", json={"name": "Nguyễn Văn Anh B", "address": "5 Lê Lợi", "ward": "Sài Gòn"}, headers=khach.headers
     )
     assert response.status_code == 200 and response.json()["ward"] == "Sài Gòn"
 
@@ -30,11 +30,11 @@ def test_export_and_deletion_request_nfr10(client, khach, qtv):
     assert khach.post("/me/deletion-request", {"reason": "Không dùng nữa"}).status_code == 409
 
     newcomer = client.post(
-        "/api/auth/register",
+        "/api/v1/auth/register",
         json={"name": "Khách mới", "email": "moi@demo.vn", "phone": "0911111111", "password": "matkhau123", "consent": True},
     ).json()
     headers = {"Authorization": f"Bearer {newcomer['accessToken']}"}
-    assert client.post("/api/me/deletion-request", json={"reason": "Thử"}, headers=headers).status_code == 200
+    assert client.post("/api/v1/me/deletion-request", json={"reason": "Thử"}, headers=headers).status_code == 200
     titles = [n["title"] for n in qtv.ok("get", "/notifications")]
     assert "Yêu cầu xóa dữ liệu cá nhân" in titles
 

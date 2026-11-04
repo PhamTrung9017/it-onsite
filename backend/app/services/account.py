@@ -10,7 +10,7 @@ from app.core.errors import ApiError, conflict, not_found
 from app.domain.rules import warranty_status
 from app.domain.status import CLOSED_STATUSES, STATUS_LABEL, Status
 from app.models import Device, Notification, Ticket, User, Warranty
-from app.services.auth import validate_phone
+from app.services.auth import validate_email, validate_phone
 from app.services.common import admin_ids, audit, load_config, notify, require_roles, utcnow
 from app.services.present import device_json, iso, user_json
 
@@ -18,7 +18,18 @@ DEVICE_TYPES = ("Laptop", "PC", "Thiết bị khác")
 NOTIFICATION_LIMIT = 100
 
 
-def update_profile(db: Session, user: User, name: str | None, phone: str | None, address: str | None, ward: str | None) -> User:
+def update_profile(
+    db: Session, user: User, name: str | None, phone: str | None, address: str | None, ward: str | None, email: str | None = None
+) -> User:
+    if email is not None:
+        email = validate_email(email) if email.strip() else None
+        if email and email.lower() != (user.email or "").lower():
+            taken = db.scalar(select(func.count()).select_from(User).where(func.lower(User.email) == email.lower(), User.id != user.id))
+            if taken:
+                raise conflict("Email đã được dùng cho tài khoản khác.")
+        if email is None and "KHACH" not in user.roles:
+            raise ApiError("Tài khoản nội bộ cần có email.")
+        user.email = email
     if phone:
         phone = validate_phone(phone)
         taken = db.scalar(select(func.count()).select_from(User).where(User.phone == phone, User.id != user.id))

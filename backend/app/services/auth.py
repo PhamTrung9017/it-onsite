@@ -44,8 +44,8 @@ def validate_new_password(password: str) -> None:
         raise ApiError(f"Mật khẩu cần ít nhất {MIN_PASSWORD} ký tự.")
 
 
-def email_taken(db: Session, email: str, phone: str | None = None) -> bool:
-    conditions = [func.lower(User.email) == email.lower()]
+def email_taken(db: Session, email: str | None, phone: str | None = None) -> bool:
+    conditions = [func.lower(User.email) == email.lower()] if email else []
     if phone:
         conditions.append(User.phone == phone)
     return db.scalar(select(func.count()).select_from(User).where(or_(*conditions))) > 0
@@ -65,15 +65,16 @@ def issue_tokens(db: Session, user: User) -> dict:
 
 
 def register(db: Session, name: str, email: str, phone: str, password: str, consent: bool) -> User:
+    """Đăng ký bằng số điện thoại; email không bắt buộc, có email thì nhận thư chào mừng, thông báo và đặt lại mật khẩu được."""
     if not consent:
         raise ApiError("Bạn cần đồng ý điều khoản và chính sách xử lý dữ liệu cá nhân.")
     if not name.strip():
         raise ApiError("Vui lòng nhập họ tên.")
-    email = validate_email(email)
+    email = validate_email(email) if email.strip() else None
     phone = validate_phone(phone)
     validate_new_password(password)
     if email_taken(db, email, phone):
-        raise conflict("Email hoặc số điện thoại đã được đăng ký.")
+        raise conflict("Email hoặc số điện thoại đã được đăng ký." if email else "Số điện thoại đã được đăng ký.")
     now = utcnow()
     user = User(
         name=name.strip(),
@@ -87,7 +88,29 @@ def register(db: Session, name: str, email: str, phone: str, password: str, cons
     db.add(user)
     db.flush()
     audit(db, user, "DANG_KY", str(user.id))
+    if email:
+        send_welcome(db, user)
     return user
+
+
+def send_welcome(db: Session, user: User) -> None:
+    settings = get_settings()
+    db.add(
+        OutboxMessage(
+            channel="email",
+            recipient=user.email,
+            subject="[IT OnSite] Chào mừng bạn đến với IT OnSite",
+            body=(
+                f"Chào {user.name},\n\nTài khoản IT OnSite của bạn đã được tạo với số điện thoại {user.phone}. "
+                "Bạn có thể đăng nhập bằng số điện thoại hoặc email này.\n\n"
+                f"Đặt lịch hỗ trợ tận nơi: {settings.app_url}/khach/tao-yeu-cau\n"
+                "Sau khi gửi yêu cầu, bạn chuyển phí giữ lịch bằng mã VietQR để cửa hàng tiếp nhận; "
+                "khoản này được trừ vào tổng tiền khi bạn duyệt báo giá.\n\n"
+                "Nếu bạn không đăng ký tài khoản này, hãy bỏ qua email."
+            ),
+            next_attempt_at=utcnow(),
+        )
+    )
 
 
 def login(db: Session, identifier: str, password: str) -> User:

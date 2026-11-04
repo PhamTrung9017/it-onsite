@@ -1,7 +1,7 @@
 /** Gọi REST API của backend FastAPI; cùng tên hàm với API giả lập để các màn hình dùng chung. */
 import { ApiError } from '../apiError.js';
 
-const BASE = import.meta.env.VITE_API_URL || '/api';
+const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 const TOKEN_KEY = 'itonsite.tokens.v1';
 export const SESSION_EXPIRED_EVENT = 'itonsite:session-expired';
 
@@ -77,7 +77,10 @@ const put = (path, body) => call('PUT', path, body);
 const patch = (path, body) => call('PATCH', path, body);
 const del = (path) => call('DELETE', path);
 const t = (id) => `/tickets/${encodeURIComponent(id)}`;
-const periodQuery = ({ days, month }) => (month ? `month=${encodeURIComponent(month)}` : `days=${days}`);
+/** Kỳ báo cáo (`days`, `month` hoặc `from`, `to`) và bộ lọc (`techId`, `category`, `ward`) thành chuỗi truy vấn. */
+const periodQuery = (params) => new URLSearchParams(
+  Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)]),
+).toString();
 
 export const httpApi = {
   /* Xác thực */

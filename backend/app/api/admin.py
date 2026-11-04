@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentUser, Db
 from app.schemas import InternalUserBody, PartBody, RolesBody, ServiceBody, TechnicianBody
@@ -74,11 +76,33 @@ def save_config(body: dict, user: CurrentUser, db: Db) -> dict:
     return config.to_dict()
 
 
+def report_query(
+    days: int | None = None,
+    month: str | None = None,
+    date_from: str | None = Query(None, alias="from"),
+    date_to: str | None = Query(None, alias="to"),
+    tech_id: int | None = Query(None, alias="techId"),
+    category: str | None = None,
+    ward: str | None = None,
+) -> dict:
+    """Kỳ báo cáo: `days`, `month` hoặc `from`, `to` (yyyy-mm-dd); lọc thêm theo `techId`, `category`, `ward`."""
+    return {
+        "days": days,
+        "month": month,
+        "date_from": date_from,
+        "date_to": date_to,
+        "flt": reports.ReportFilter(tech_id, category or None, ward or None),
+    }
+
+
+ReportQuery = Annotated[dict, Depends(report_query)]
+
+
 @router.get("/reports")
-def report(user: CurrentUser, db: Db, days: int | None = None, month: str | None = None) -> dict:
-    return reports.report(db, user, days, month)
+def report(user: CurrentUser, db: Db, query: ReportQuery) -> dict:
+    return reports.report(db, user, **query)
 
 
 @router.get("/reports/export")
-def report_export(user: CurrentUser, db: Db, days: int | None = None, month: str | None = None) -> dict:
-    return reports.export_data(db, user, days, month)
+def report_export(user: CurrentUser, db: Db, query: ReportQuery) -> dict:
+    return reports.export_data(db, user, **query)

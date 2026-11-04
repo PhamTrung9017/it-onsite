@@ -81,8 +81,21 @@ const sectionTitle = (value) => [{ value, fontWeight: 'bold', fontSize: 12 }];
 
 const commissionBase = (t) => t.serviceAmount + t.surveyFee;
 
+/** Thời gian xử lý tại nhà khách của một phiếu: từ check-in tới khi kỹ thuật viên báo hoàn thành (giờ). */
+const onsite = (t) => (t.checkInAt && t.workDoneAt ? (new Date(t.workDoneAt) - new Date(t.checkInAt)) / 3600000 : null);
+
+/** Mô tả bộ lọc đang áp dụng, ví dụ "Kỹ thuật viên: Nguyễn Văn An; Phường: Bến Thành". */
+function filterText(data, options) {
+  const f = data.filter || {};
+  const parts = [];
+  if (f.techId) parts.push(`Kỹ thuật viên: ${data.technicians.find((k) => String(k.id) === String(f.techId))?.name || f.techId}`);
+  if (f.category) parts.push(`Loại sự cố: ${options?.categories?.find((c) => c.code === f.category)?.name || f.category}`);
+  if (f.ward) parts.push(`Phường: ${f.ward}`);
+  return parts.join('; ');
+}
+
 /** Số liệu dùng chung cho các sheet, tính từ dữ liệu thô của từng phiếu. */
-export function summarizeExport(data, now = new Date()) {
+export function summarizeExport(data, now = new Date(), options = null) {
   const from = new Date(data.period.from);
   const to = new Date(data.period.to);
   const within = (value) => Boolean(value) && new Date(value) >= from && new Date(value) < to;
@@ -134,6 +147,7 @@ export function summarizeExport(data, now = new Date()) {
 
   return {
     isMonth,
+    filter: filterText(data, options),
     rate,
     baseSalary: data.payroll.baseSalary,
     from,
@@ -154,6 +168,7 @@ export function summarizeExport(data, now = new Date()) {
       prepaid: sum(completed, prepaid),
       cash: sum(completed.filter((t) => t.payment?.method === 'TIEN_MAT'), paidAtEnd),
       transfer: sum(completed.filter((t) => t.payment?.method === 'CHUYEN_KHOAN'), paidAtEnd) + sum(completed, prepaid) + sum(forfeited, forfeit),
+      onsite: average(completed.map(onsite).filter((h) => h !== null)),
       salary: sum(technicians, (k) => k.salary),
       commission: sum(technicians, (k) => k.commission),
     },
@@ -167,7 +182,12 @@ function periodText(s) {
 
 /** Dựng một sheet: phần đầu + nội dung; cố định phần đầu và dòng tiêu đề bảng đầu tiên khi cuộn. */
 function makeSheet({ sheet, title, s, now, widths, body, freeze = true, landscape = true, extraLines = [] }) {
-  const lines = [`Kỳ báo cáo: ${periodText(s)}${s.isMonth ? ` (${formatDate(s.from)} – ${formatDate(s.lastDay)})` : ''}`, ...extraLines, `Thời điểm xuất: ${formatDateTime(now)}`];
+  const lines = [
+    `Kỳ báo cáo: ${periodText(s)}${s.isMonth ? ` (${formatDate(s.from)} – ${formatDate(s.lastDay)})` : ''}`,
+    ...(s.filter ? [`Bộ lọc: ${s.filter}`] : []),
+    ...extraLines,
+    `Thời điểm xuất: ${formatDateTime(now)}`,
+  ];
   const top = heading(title, lines, widths.length);
   return {
     sheet,
@@ -198,6 +218,8 @@ function overviewSheet(report, s, now) {
         kpi('Doanh thu (đồng)', money, report.revenue, report.revenuePrev),
         kpi('Phiếu hoàn tất', count, report.done, report.donePrev),
         kpi('Thời gian xử lý trung bình (giờ)', decimal, report.done ? report.avgHours : null, report.done && report.donePrev ? report.avgHoursPrev : null),
+        kpi('Thời gian tại nhà khách trung bình (giờ)', decimal, report.onsiteHours ?? null, report.onsiteHours != null ? report.onsiteHoursPrev ?? null : null),
+        ['Tỷ lệ hoàn tất phiếu tạo trong kỳ (%)', decimal(report.completionRate ?? null)],
         ['Đánh giá trung bình (sao)', decimal(report.rating)],
         ['Lượt đánh giá', count(report.reviewCount)],
         ['Phiếu tạo mới', count(report.total)],
@@ -335,11 +357,11 @@ function jobsSheet(s, now) {
   const rows = [];
   s.technicians.filter((k) => k.done).forEach((k) => {
     k.jobs.forEach((t) => rows.push([
-      k.name, t.id, localDate(t.completedAt), t.category, t.ward, t.isWarranty ? 'Có' : null, money(t.serviceAmount), money(t.surveyFee),
+      k.name, t.id, localDate(t.completedAt), decimal(onsite(t)), t.category, t.ward, t.isWarranty ? 'Có' : null, money(t.serviceAmount), money(t.surveyFee),
       money(t.partsAmount), money(t.amount), money(prepaid(t)), PAYMENT_METHOD_LABEL[t.payment?.method] || null,
       PAYMENT_STATUS_LABEL[t.payment?.status] || null, money(commissionBase(t)), money((commissionBase(t) * s.rate) / 100), count(t.review?.stars),
     ]));
-    rows.push({ strong: true, cells: [`Cộng ${k.name}`, `${k.done} phiếu`, null, null, null, count(k.warranty), money(k.service), money(k.survey),
+    rows.push({ strong: true, cells: [`Cộng ${k.name}`, `${k.done} phiếu`, null, decimal(average(k.jobs.map(onsite).filter((h) => h !== null))), null, null, count(k.warranty), money(k.service), money(k.survey),
       money(k.parts), money(k.revenue), money(sum(k.jobs, prepaid)), null, null, money(k.base), money(k.commission), null] });
   });
   return makeSheet({
@@ -347,10 +369,10 @@ function jobsSheet(s, now) {
     title: 'Chi tiết công việc kỹ thuật viên',
     s,
     now,
-    widths: [24, 18, 17, 28, 15, 9, 14, 12, 12, 13, 13, 19, 24, 14, 12, 10],
-    body: table(['Kỹ thuật viên', 'Mã phiếu', 'Hoàn tất lúc', 'Loại sự cố', 'Phường', 'Bảo hành', 'Tiền công dịch vụ', 'Phí khảo sát', 'Linh kiện',
+    widths: [24, 18, 17, 12, 28, 15, 9, 14, 12, 12, 13, 13, 19, 24, 14, 12, 10],
+    body: table(['Kỹ thuật viên', 'Mã phiếu', 'Hoàn tất lúc', 'Tại nhà khách (giờ)', 'Loại sự cố', 'Phường', 'Bảo hành', 'Tiền công dịch vụ', 'Phí khảo sát', 'Linh kiện',
       'Tổng tiền', 'Trong đó trả trước', 'Hình thức thanh toán', 'Tình trạng thanh toán', 'Tính hoa hồng', 'Hoa hồng', 'Đánh giá (sao)'], rows,
-    ['Tổng cộng', `${s.completed.length} phiếu`, null, null, null, count(sum(s.technicians, (k) => k.warranty)), money(s.totals.service), money(s.totals.survey),
+    ['Tổng cộng', `${s.completed.length} phiếu`, null, decimal(s.totals.onsite), null, null, count(sum(s.technicians, (k) => k.warranty)), money(s.totals.service), money(s.totals.survey),
       money(s.totals.parts), money(s.totals.jobs), money(s.totals.prepaid), null, null, money(sum(s.technicians, (k) => k.base)), money(s.totals.commission), null]),
   });
 }
@@ -453,8 +475,8 @@ function ticketSheet(s, data, now) {
   });
 }
 
-export function reportSheets({ report, data, now = new Date() }) {
-  const s = summarizeExport(data, now);
+export function reportSheets({ report, data, now = new Date(), options = null }) {
+  const s = summarizeExport(data, now, options);
   return [
     overviewSheet(report, s, now),
     dailySheet(report, s, now),
@@ -472,11 +494,12 @@ export function reportSheets({ report, data, now = new Date() }) {
 export function reportFileName(data, now = new Date()) {
   const from = new Date(data.period.from);
   if (data.period.kind === 'month') return `bao-cao-thang-${String(from.getMonth() + 1).padStart(2, '0')}-${from.getFullYear()}.xlsx`;
+  if (data.period.kind === 'range') return `bao-cao-${toDateInput(from)}-den-${toDateInput(new Date(new Date(data.period.to).getTime() - 1))}.xlsx`;
   return `bao-cao-${toDateInput(from)}-den-${toDateInput(now)}.xlsx`;
 }
 
-export async function downloadReport({ report, data }) {
+export async function downloadReport({ report, data, options = null }) {
   const { default: writeExcelFile } = await import('write-excel-file/browser');
   const now = new Date();
-  await writeExcelFile(reportSheets({ report, data, now }), WORKBOOK_OPTIONS).toFile(reportFileName(data, now));
+  await writeExcelFile(reportSheets({ report, data, now, options }), WORKBOOK_OPTIONS).toFile(reportFileName(data, now));
 }
