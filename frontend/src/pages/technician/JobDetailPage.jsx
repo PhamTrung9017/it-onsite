@@ -13,6 +13,7 @@ import { AiResult, QuoteStatusBadge, QuoteTable, TicketTimeline } from '../../co
 import { STATUS } from '../../lib/ticketStatus.js';
 import { canComplete } from '../../lib/rules.js';
 import { formatDateTime, money } from '../../lib/format.js';
+import { oldWardText } from '../../lib/wards.js';
 
 const DEFAULT_CHECKLIST = ['Kiểm tra hiện trạng cùng khách', 'Sao lưu dữ liệu quan trọng (nếu cần)', 'Thực hiện các hạng mục đã duyệt', 'Chạy thử và bàn giao cho khách'];
 
@@ -162,7 +163,7 @@ export default function JobDetailPage() {
           <Card title="Khách hàng">
             <div className="stack">
               <div><div className="strong">{t.customer?.name}</div><div className="small muted">{t.device?.type} · {t.device?.brand} {t.device?.model}</div>{t.device?.note && <div className="small muted">{t.device.note}</div>}</div>
-              <div className="row-sm small" style={{ alignItems: 'flex-start' }}><MapPin size={16} style={{ flex: 'none', marginTop: 2 }} aria-hidden />{t.address}, phường {t.ward}, TP. Hồ Chí Minh</div>
+              <div className="row-sm small" style={{ alignItems: 'flex-start' }}><MapPin size={16} style={{ flex: 'none', marginTop: 2 }} aria-hidden /><span>{t.address}, phường {t.ward}, TP. Hồ Chí Minh{oldWardText(t.ward) && <span className="tiny muted" style={{ display: 'block' }}>Địa chỉ cũ: {oldWardText(t.ward)}</span>}</span></div>
               <div className="small"><span className="muted">Giờ hẹn: </span><span className="strong">{formatDateTime(t.assignment?.appointmentAt)}</span></div>
               {t.deviceCredentials && (
                 <div className="row-between" style={{ padding: '10px 12px', background: 'var(--bg)', borderRadius: 10 }}>

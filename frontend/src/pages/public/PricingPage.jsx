@@ -3,6 +3,7 @@ import { useLoad } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
 import { Alert, ButtonLink, Card, ErrorState, Loading, Money } from '../../components/ui.jsx';
 import { money } from '../../lib/format.js';
+import { oldWardText } from '../../lib/wards.js';
 
 export default function PricingPage() {
   const { data, loading, error, reload } = useLoad(() => api.getCatalog(), []);
@@ -45,8 +46,14 @@ export default function PricingPage() {
             Sau khi gửi yêu cầu, bạn chuyển khoản phí giữ lịch {money(data.config.surveyFee)} trong {data.config.depositMinutes} phút; quá hạn yêu cầu tự hủy.
             Hủy khi cửa hàng chưa tiếp nhận được hoàn phí; hủy sau khi cửa hàng đã tiếp nhận hoặc vắng mặt khi kỹ thuật viên đến thì không hoàn.
             Đổi lịch miễn phí khi còn ít nhất {data.config.freeCancelHours} giờ trước giờ hẹn; sát giờ hơn vui lòng gọi cửa hàng.
-            Giờ phục vụ {data.config.serviceHours.start}–{data.config.serviceHours.end} hằng ngày, tại các phường: {data.config.areas.join(', ')}.
+            Giờ phục vụ {data.config.serviceHours.start}–{data.config.serviceHours.end} hằng ngày, tại các phường dưới đây.
           </Alert>
+          <Card title="Khu vực phục vụ" bodyClass="table-wrap">
+            <table className="table">
+              <thead><tr><th>Phường (từ 01/07/2025)</th><th>Gồm địa bàn cũ</th></tr></thead>
+              <tbody>{data.config.areas.map((a) => <tr key={a}><td className="strong nowrap">{a}</td><td className="small muted">{oldWardText(a) || '—'}</td></tr>)}</tbody>
+            </table>
+          </Card>
         </div>
       )}
     </div>

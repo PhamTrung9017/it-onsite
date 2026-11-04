@@ -31,6 +31,7 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
       await page.getByRole('button', { name: 'Tiếp tục' }).click();
       await page.fill('#addr', '120 Nguyễn Trãi');
       await page.selectOption('#ward', 'Bến Thành');
+      await expect(page.getByText('Gồm địa bàn cũ: P. Bến Thành, P. Phạm Ngũ Lão, P. Cầu Ông Lãnh, P. Nguyễn Thái Bình, Quận 1')).toBeVisible();
       await page.fill('#date', await tomorrowInput(page));
       await page.selectOption('#time', '15:00');
       for (const box of await page.locator('label.check input[type=checkbox]').all()) await box.check();
@@ -68,6 +69,7 @@ test.describe('Quy trình nghiệp vụ IT OnSite', () => {
     await test.step('UC09, UC12, UC10: kỹ thuật viên nhận việc, check-in, chụp ảnh và lập báo giá', async () => {
       await loginAs(page, (await technician(page, techId)).email);
       await page.goto(`/ktv/viec/${id}`);
+      await expect(page.getByText(/Địa chỉ cũ: P\. Bến Thành/)).toBeVisible();
       await page.getByRole('button', { name: 'Nhận việc' }).click();
       await expectStatus(page, id, 'KTV_DA_NHAN');
       await page.getByRole('button', { name: 'Check-in' }).click();

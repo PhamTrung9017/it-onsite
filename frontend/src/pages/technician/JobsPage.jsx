@@ -6,6 +6,7 @@ import { api } from '../../services/api.js';
 import { Card, Empty, ErrorState, Loading, PageHead, Segmented, StatusBadge } from '../../components/ui.jsx';
 import { formatTime, relativeDay } from '../../lib/format.js';
 import { STATUS } from '../../lib/ticketStatus.js';
+import { wardLabel } from '../../lib/wards.js';
 
 function Countdown({ deadline, assignedAt }) {
   const now = useNow();
@@ -36,7 +37,7 @@ export function JobCard({ job }) {
           <StatusBadge status={job.status} />
         </div>
         <div className="small">{job.customer?.name} · {job.device?.brand} {job.device?.model}</div>
-        <div className="addr"><MapPin aria-hidden />{job.address}, phường {job.ward}</div>
+        <div className="addr"><MapPin aria-hidden />{job.address}, phường {wardLabel(job.ward)}</div>
         {pending && <Countdown deadline={job.assignment.deadline} assignedAt={job.assignment.assignedAt} />}
       </div>
     </Link>

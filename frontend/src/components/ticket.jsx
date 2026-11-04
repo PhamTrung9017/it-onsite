@@ -3,6 +3,7 @@ import { Bell, Check, CheckCheck, Clock, MapPin, Sparkles, X } from 'lucide-reac
 import { MAIN_FLOW, STATUS, STATUS_LABEL } from '../lib/ticketStatus.js';
 import { formatDateTime, money, relativeDay, formatTime, timeAgo } from '../lib/format.js';
 import { quoteTotal } from '../lib/rules.js';
+import { oldWardText } from '../lib/wards.js';
 import { URGENCY_LABEL } from '../lib/classifier.js';
 import { Badge, Button, Card, DeviceIcon, Empty, ErrorState, Loading, Money, PageHead, StatusBadge } from './ui.jsx';
 import { api } from '../services/api.js';
@@ -134,8 +135,15 @@ export function TicketRow({ ticket, to }) {
   );
 }
 
+/** Địa chỉ phiếu theo tên phường mới, kèm các phường cũ để đối chiếu. */
 export function AddressLine({ ticket }) {
-  return <span className="row-sm small muted" style={{ alignItems: 'flex-start' }}><MapPin size={15} style={{ flex: 'none', marginTop: 3 }} aria-hidden />{ticket.address}, phường {ticket.ward}, TP. Hồ Chí Minh</span>;
+  const old = oldWardText(ticket.ward);
+  return (
+    <span className="row-sm small muted" style={{ alignItems: 'flex-start' }}>
+      <MapPin size={15} style={{ flex: 'none', marginTop: 3 }} aria-hidden />
+      <span>{ticket.address}, phường {ticket.ward}, TP. Hồ Chí Minh{old && <span className="tiny faint" style={{ display: 'block' }}>Địa chỉ cũ: {old}</span>}</span>
+    </span>
+  );
 }
 
 /** Màn hình thông báo dùng chung cho mọi vai trò. */
