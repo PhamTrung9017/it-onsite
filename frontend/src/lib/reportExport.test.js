@@ -39,6 +39,10 @@ describe('UC21 xuất báo cáo Excel', () => {
   const sheet = (name) => sheets.find((x) => x.sheet === name).data;
   const row = (name, first) => sheet(name).find((r) => [r[0], r[0]?.value, r[1], r[1]?.value].includes(first));
   const values = (r) => r.map((c) => (c && typeof c === 'object' && 'value' in c ? c.value : c));
+  const body = (name, header) => {
+    const rows = sheet(name);
+    return rows.slice(rows.findIndex((r) => r[0]?.value === header) + 1);
+  };
 
   it('doanh thu và lương tính theo phiếu hoàn tất trong kỳ, không tính linh kiện vào hoa hồng', () => {
     expect(s.totals).toMatchObject({ revenue: 1550000, service: 300000, survey: 50000, parts: 1200000, cash: 1500000, transfer: 50000 });
@@ -59,9 +63,10 @@ describe('UC21 xuất báo cáo Excel', () => {
     expect(sheets.map((x) => x.sheet)).toEqual(['Tổng quan', 'Doanh thu theo ngày', 'Theo loại sự cố', 'Bảng lương KTV', 'Hiệu suất KTV',
       'Chi tiết công việc KTV', 'Thanh toán và đối soát', 'Linh kiện đã dùng', 'Đánh giá của khách', 'Danh sách phiếu']);
     expect(sheets.every((x) => x.sheet.length <= 31)).toBe(true);
-    expect(values(row('Bảng lương KTV', 'Nguyễn Văn An'))).toEqual([1, 'Nguyễn Văn An', 3, 1, 300000, 50000, 350000, 105000, 5000000, 5105000, 0]);
-    expect(values(row('Bảng lương KTV', 'Tổng cộng')).slice(7)).toEqual([105000, 10000000, 10105000, 200000]);
-    expect(sheet('Bảng lương KTV')[0][0].value).toBe('Bảng lương kỹ thuật viên tháng 10/2026');
+    expect(values(row('Bảng lương KTV', 'Nguyễn Văn An'))).toEqual([1, 'Nguyễn Văn An', 3, 1, 300000, 50000, 350000, 105000, 5000000, 5105000, 0, null]);
+    expect(values(row('Bảng lương KTV', 'Tổng cộng')).slice(7)).toEqual([105000, 10000000, 10105000, 200000, null]);
+    expect(sheet('Bảng lương KTV')[0][0]).toMatchObject({ value: 'BẢNG LƯƠNG KỸ THUẬT VIÊN THÁNG 10/2026', columnSpan: 12 });
+    expect(sheet('Bảng lương KTV').some((r) => r[1]?.value === 'Người lập bảng')).toBe(true);
   });
 
   it('chi tiết công việc có dòng cộng từng kỹ thuật viên để đối chiếu lương', () => {
@@ -74,14 +79,22 @@ describe('UC21 xuất báo cáo Excel', () => {
   it('các sheet phụ: đối soát, linh kiện, đánh giá thấp lên trước, danh sách phiếu tạo trong kỳ', () => {
     expect(values(row('Thanh toán và đối soát', 'Tiền mặt kỹ thuật viên đã thu, chưa đối soát'))).toEqual(['Tiền mặt kỹ thuật viên đã thu, chưa đối soát', 1, 200000]);
     expect(values(row('Linh kiện đã dùng', 'SSD 512GB'))).toEqual(['SSD 512GB', 1, 1200000, 1]);
-    expect(values(sheet('Đánh giá của khách')[1]).slice(1, 6)).toEqual(['B', 'Nguyễn Văn An', 'Khách mẫu', 2, 'Chờ lâu']);
-    expect(sheet('Danh sách phiếu')).toHaveLength(1 + 4);
+    expect(values(body('Đánh giá của khách', 'Đánh giá lúc')[0]).slice(1, 6)).toEqual(['B', 'Nguyễn Văn An', 'Khách mẫu', 2, 'Chờ lâu']);
+    expect(body('Danh sách phiếu', 'Mã phiếu')).toHaveLength(4);
     expect(values(row('Doanh thu theo ngày', 'Tổng cộng')).slice(1)).toEqual([3, 300000, 50000, 1200000, 0, 1500000, 50000, 1550000]);
   });
 
   it('ngày giờ trong file trùng giờ hiển thị trên màn hình', () => {
-    const created = sheet('Danh sách phiếu')[1][1].value;
+    const created = body('Danh sách phiếu', 'Mã phiếu')[0][1].value;
     expect([created.getUTCDate(), created.getUTCHours()]).toEqual([10, 9]);
+  });
+
+  it('bảng có kẻ khung, dòng tiêu đề in đậm, cố định phần đầu khi cuộn', () => {
+    const tickets = sheets.find((x) => x.sheet === 'Danh sách phiếu');
+    const header = body('Danh sách phiếu', 'Mã phiếu');
+    expect(tickets.stickyRowsCount).toBe(sheet('Danh sách phiếu').length - header.length);
+    expect(header[0].every((c) => c.borderStyle === 'thin')).toBe(true);
+    expect(sheet('Danh sách phiếu')[tickets.stickyRowsCount - 1].every((c) => c.fontWeight === 'bold' && c.align === 'center')).toBe(true);
   });
 
   it('ghi được ra file xlsx', async () => {
