@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from pydantic import AwareDatetime
 
-from app.api.deps import CurrentUser, Db, presenter
+from app.api.deps import CurrentUser, Db, Page, presenter
 from app.domain.rules import warranty_status
 from app.models import Device, User
 from app.schemas import AssignBody, ClaimDecisionBody, ReceiveBody, RefundBody
@@ -96,10 +96,12 @@ def reconcile(ticket_id: str, user: CurrentUser, db: Db) -> dict:
 
 
 @router.get("/warranty-claims")
-def claims(user: CurrentUser, db: Db) -> list[dict]:
+def claims(user: CurrentUser, db: Db, page: Page) -> list[dict]:
     now = utcnow()
     result = []
-    for claim in dispatch.list_claims(db, user):
+    items, total = dispatch.list_claims(db, user, page.limit, page.offset)
+    page.total(total)
+    for claim in items:
         warranty = claim.warranty
         result.append(
             {

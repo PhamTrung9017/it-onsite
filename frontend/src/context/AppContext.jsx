@@ -108,7 +108,7 @@ export function NotificationProvider({ children }) {
   const timer = useRef();
   const refresh = useCallback(() => {
     if (!user) { setUnread(0); return; }
-    api.listNotifications().then((xs) => setUnread(xs.filter((n) => !n.read).length)).catch(() => {});
+    api.unreadNotifications().then(setUnread).catch(() => {});
   }, [user]);
   useEffect(() => {
     refresh();

@@ -11,7 +11,7 @@ from tests.test_flow import create_ticket, receive
 
 def test_overview_and_reports(qtv):
     overview = qtv.ok("get", "/admin/overview")
-    assert {"technicians", "services", "parts", "categories", "users", "config", "allAreas", "audit"} <= overview.keys()
+    assert {"technicians", "services", "parts", "categories", "config", "allAreas"} <= overview.keys()
     report = qtv.ok("get", "/admin/reports?days=30")
     assert report["done"] > 0 and len(report["byDay"]) == 30
     assert sum(s["count"] for s in report["byStatus"]) == report["total"]
@@ -63,7 +63,7 @@ def test_price_change_does_not_affect_existing_quote_br13(qtv, khach):
     qtv.ok("put", "/admin/services", {**service, "price": service["price"] + 100000})
     after = [i["unitPrice"] for i in khach.ok("get", f"/tickets/{ticket['id']}")["quotes"][-1]["items"]]
     assert before == after
-    assert any(a["action"] == "SUA_BANG_GIA" for a in qtv.ok("get", "/admin/overview")["audit"]), "NFR-08"
+    assert any(a["action"] == "SUA_BANG_GIA" for a in qtv.ok("get", "/admin/audit")), "NFR-08"
 
 
 def test_config_validation(qtv):
@@ -132,7 +132,7 @@ def test_audit_log_records_old_and_new_values_nfr08(qtv):
     tech = next(t for t in overview["technicians"] if t["active"])
     qtv.ok("put", "/admin/technicians", {**tech, "skills": [*tech["skills"], "KHAC"], "schedule": {**tech["schedule"], "start": "09:00"}})
 
-    details = {a["action"]: a["detail"] for a in reversed(qtv.ok("get", "/admin/overview")["audit"])}
+    details = {a["action"]: a["detail"] for a in reversed(qtv.ok("get", "/admin/audit"))}
     assert "Giá: 200.000đ → 250.000đ" in details["SUA_BANG_GIA"] and "Bảo hành (ngày): 30 → 45" in details["SUA_BANG_GIA"]
     assert f"Tồn kho: {part['stock']} → {part['stock'] + 5}" in details["SUA_LINH_KIEN"]
     assert "Phí khảo sát: 50.000đ → 60.000đ" in details["CAU_HINH"]
@@ -163,3 +163,33 @@ def test_report_custom_range_and_filters(qtv):
 
     for bad in ("from=2026-10-10", "from=2026-10-10&to=2026-10-01", "from=x&to=y", "from=2026-01-01&to=2027-12-31"):
         assert qtv.get(f"/admin/reports?{bad}").status_code == 400
+
+
+def test_long_lists_are_paged(client, khach, dpv, qtv):
+    first = qtv.get("/admin/audit?limit=2")
+    total = int(first.headers["x-total-count"])
+    assert len(first.json()) == 2 and total >= 3
+    rest = qtv.ok("get", "/admin/audit?limit=100&offset=2")
+    assert len(rest) == total - 2 and rest[0]["at"] <= first.json()[-1]["at"]
+    assert qtv.get("/admin/audit?limit=101").status_code == 422
+
+    customers = qtv.get("/admin/users?role=KHACH&limit=2")
+    assert int(customers.headers["x-total-count"]) == 5 and all("KHACH" in u["roles"] for u in customers.json())
+    staff = qtv.ok("get", "/admin/users?limit=3")
+    assert all("KHACH" not in u["roles"] for u in staff), "tài khoản nội bộ hiện trước"
+    assert [u["email"] for u in qtv.ok("get", "/admin/users?q=0909000003")] == ["chau.le@demo.vn"]
+    assert [u["name"] for u in qtv.ok("get", "/admin/users?q=lan")] == ["Trần Thị Lan"]
+
+    mine = khach.get("/tickets/mine?limit=3")
+    assert len(mine.json()) == 3 and int(mine.headers["x-total-count"]) > 3
+    open_tickets = khach.ok("get", "/tickets/mine?group=open&limit=100")
+    assert open_tickets and all(t["status"] not in ("HOAN_TAT", "DA_HUY") for t in open_tickets)
+    done = khach.get("/tickets/mine?group=done&limit=100")
+    assert int(done.headers["x-total-count"]) == len(done.json()) and all(t["status"] == "HOAN_TAT" for t in done.json())
+    assert khach.get("/tickets/mine?group=khac").status_code == 400
+
+    notes = khach.get("/notifications?limit=1")
+    assert len(notes.json()) == 1 and int(notes.headers["x-total-count"]) >= 1
+    unread = khach.ok("get", "/notifications/unread-count")["count"]
+    assert unread == sum(1 for n in khach.ok("get", "/notifications?limit=100") if not n["read"])
+    assert int(dpv.get("/warranty-claims?limit=1").headers["x-total-count"]) >= 0

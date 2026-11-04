@@ -91,7 +91,7 @@ def test_quote_checks_total_stock_of_repeated_part(client, ktv):
 def test_locked_or_removed_technician_is_not_suggested(client, qtv, dpv, khach):
     ticket = create_ticket(khach, "Laptop bị virus quảng cáo bật liên tục.")
     received = receive(dpv, ticket, "VIRUS")
-    users = qtv.ok("get", "/admin/overview")["users"]
+    users = qtv.ok("get", "/admin/users?limit=100")
     an = next(u for u in users if u["email"] == "ktv@demo.vn")
     huy = next(u for u in users if u["email"] == "huy.tran@demo.vn")
     qtv.ok("put", f"/admin/users/{an['id']}/roles", {"roles": ["KTV"], "locked": True})

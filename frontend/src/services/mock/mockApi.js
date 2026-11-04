@@ -12,6 +12,13 @@ import { ApiError } from '../apiError.js';
 const KEY = 'itonsite.mock.v2';
 const SESSION_KEY = 'itonsite.session.v1';
 const DAY = 86400000;
+/** Một trang của danh sách như API phân trang của backend. */
+const pageOf = (list, { limit = 20, offset = 0 } = {}) => ({ items: list.slice(offset, offset + limit), total: list.length });
+const TICKET_GROUPS = {
+  open: (t) => !isClosed(t.status),
+  done: (t) => t.status === STATUS.HOAN_TAT,
+  cancelled: (t) => t.status === STATUS.DA_HUY,
+};
 const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.]+$/;
 
 export { ApiError };
@@ -519,12 +526,14 @@ export const mockApi = {
     return enrichTicket(db, t, user);
   }, 450),
 
-  listMyTickets: () => respond((db) => {
+  listMyTickets: ({ group, ...paging } = {}) => respond((db) => {
     const user = currentUser(db);
-    return db.tickets
-      .filter((t) => t.customerId === user.id)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map((t) => enrichTicket(db, t, user));
+    if (group && !TICKET_GROUPS[group]) throw new ApiError('Nhóm phiếu không hợp lệ.');
+    const mine = db.tickets
+      .filter((t) => t.customerId === user.id && (!group || TICKET_GROUPS[group](t)))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const page = pageOf(mine, paging);
+    return { ...page, items: page.items.map((t) => enrichTicket(db, t, user)) };
   }, 160),
 
   getTicket: (id) => respond((db) => {
@@ -715,10 +724,15 @@ export const mockApi = {
   }),
 
   /* ---------- Thông báo (UC17) ---------- */
-  listNotifications: () => respond((db) => {
+  listNotifications: (paging) => respond((db) => {
     const user = currentUser(db);
-    return db.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
+    return pageOf(db.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), paging);
   }, 100),
+
+  unreadNotifications: () => respond((db) => {
+    const user = currentUser(db);
+    return db.notifications.filter((n) => n.userId === user.id && !n.read).length;
+  }, 60),
 
   markNotificationsRead: (ids) => respond((db) => {
     const user = currentUser(db);
@@ -1013,14 +1027,14 @@ export const mockApi = {
     return enrichTicket(db, t, user);
   }),
 
-  listWarrantyClaims: () => respond((db) => {
+  listWarrantyClaims: (paging) => respond((db) => {
     requireRole(db, 'DPV', 'QTV');
-    return db.warrantyClaims
+    return pageOf(db.warrantyClaims
       .map((c) => {
         const w = db.warranties.find((x) => x.id === c.warrantyId);
         return { ...c, warranty: w ? { ...w, ...warrantyStatus(w) } : null, customer: publicUser(db.users.find((u) => u.id === c.customerId)), device: w && db.devices.find((d) => d.id === w.deviceId) };
       })
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      .sort((a, b) => Number(a.status !== 'CHO_XU_LY') - Number(b.status !== 'CHO_XU_LY') || b.createdAt.localeCompare(a.createdAt)), paging);
   }, 160),
 
   decideWarrantyClaim: (id, { valid, reason }) => respond((db) => {
@@ -1064,12 +1078,26 @@ export const mockApi = {
       services: db.services,
       parts: db.parts,
       categories: db.categories,
-      users: db.users.map(publicUser),
       config: db.config,
       allAreas: [...new Set([...AREAS, ...db.config.areas])],
-      audit: db.audit.slice(-80).reverse(),
     };
   }, 160),
+
+  /** Tài khoản nội bộ trước khách hàng; tìm theo tên, email, số điện thoại và lọc theo vai trò. */
+  listUsers: ({ q = '', role = '', ...paging } = {}) => respond((db) => {
+    requireRole(db, 'QTV');
+    const key = q.trim().toLowerCase();
+    const users = db.users
+      .filter((u) => (!role || u.roles.includes(role)) && (!key || [u.name, u.email || '', u.phone || ''].some((v) => v.toLowerCase().includes(key))))
+      .sort((a, b) => Number(a.roles.includes('KHACH')) - Number(b.roles.includes('KHACH')));
+    const page = pageOf(users, paging);
+    return { ...page, items: page.items.map(publicUser) };
+  }, 140),
+
+  listAudit: (paging) => respond((db) => {
+    requireRole(db, 'QTV');
+    return pageOf([...db.audit].reverse(), paging);
+  }, 140),
 
   saveService: (svc) => respond((db) => {
     const user = requireRole(db, 'QTV');

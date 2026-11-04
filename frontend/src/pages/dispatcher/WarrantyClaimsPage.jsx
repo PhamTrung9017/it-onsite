@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { useAction, useLoad } from '../../hooks/useApi.js';
+import { useAction, usePaged } from '../../hooks/useApi.js';
 import { useNotifications } from '../../context/AppContext.jsx';
 import { api } from '../../services/api.js';
-import { Alert, Badge, Button, Card, Empty, ErrorState, Field, Loading, Modal, PageHead } from '../../components/ui.jsx';
+import { Alert, Badge, Button, Card, Empty, ErrorState, Field, LoadMore, Loading, Modal, PageHead } from '../../components/ui.jsx';
 import { formatDate, formatDateTime } from '../../lib/format.js';
 
 const ST = { CHO_XU_LY: ['warning', 'Chờ xử lý'], HOP_LE: ['success', 'Đã chấp nhận'], TU_CHOI: ['muted', 'Đã từ chối'] };
 
 export default function WarrantyClaimsPage() {
-  const { data, loading, error, reload } = useLoad(() => api.listWarrantyClaims(), []);
+  const { items: data, total, loading, more, error, reload, loadMore } = usePaged((paging) => api.listWarrantyClaims(paging), []);
   const { refresh } = useNotifications();
   const { busy, run } = useAction();
   const [rejecting, setRejecting] = useState(null);
@@ -49,6 +49,7 @@ export default function WarrantyClaimsPage() {
             </div>
           );
         })}
+        <LoadMore shown={data.length} total={total} loading={more} onClick={loadMore} />
       </Card>
       <Modal open={Boolean(rejecting)} title="Từ chối yêu cầu bảo hành" onClose={() => setRejecting(null)}
         footer={<><Button variant="outline" onClick={() => setRejecting(null)}>Đóng</Button><Button variant="danger-solid" loading={busy === rejecting?.id} onClick={() => decide(rejecting, false)}>Từ chối</Button></>}>

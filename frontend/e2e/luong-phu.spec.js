@@ -294,6 +294,17 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await expect(page.getByRole('heading', { level: 1 }).locator('..')).toContainText('hanh.ngo@example.com');
   });
 
+  test('UC22: tìm tài khoản theo tên hoặc số điện thoại, lọc theo vai trò', async ({ page }) => {
+    await loginAs(page, 'qtv@demo.vn');
+    await page.goto('/quan-tri/tai-khoan');
+    await page.getByLabel('Tìm tài khoản').fill('0909000003');
+    await expect(page.locator('table tbody tr')).toHaveCount(1);
+    await expect(page.locator('table tbody tr')).toContainText('Lê Minh Châu');
+    await page.getByLabel('Tìm tài khoản').fill('');
+    await page.getByLabel('Lọc vai trò').selectOption('KTV');
+    await expect(page.locator('table tbody tr')).toHaveCount(4);
+  });
+
   test('UC17: đánh dấu đã đọc thông báo', async ({ page }) => {
     await loginAs(page, 'khach@demo.vn');
     await page.goto('/khach/thong-bao');

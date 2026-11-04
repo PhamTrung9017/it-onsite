@@ -11,11 +11,10 @@ from app.domain.rules import warranty_status
 from app.domain.status import CLOSED_STATUSES, STATUS_LABEL, Status
 from app.models import Device, Notification, Ticket, User, Warranty
 from app.services.auth import validate_email, validate_phone
-from app.services.common import admin_ids, audit, load_config, notify, require_roles, utcnow
+from app.services.common import admin_ids, audit, load_config, notify, page_of, require_roles, utcnow
 from app.services.present import device_json, iso, user_json
 
 DEVICE_TYPES = ("Laptop", "PC", "Thiết bị khác")
-NOTIFICATION_LIMIT = 100
 
 
 def update_profile(
@@ -129,15 +128,13 @@ def request_data_deletion(db: Session, user: User, reason: str) -> None:
     audit(db, user, "YEU_CAU_XOA_DU_LIEU", str(user.id), reason.strip())
 
 
-def list_notifications(db: Session, user: User) -> list[Notification]:
-    return list(
-        db.scalars(
-            select(Notification)
-            .where(Notification.user_id == user.id)
-            .order_by(Notification.created_at.desc(), Notification.id.desc())
-            .limit(NOTIFICATION_LIMIT)
-        )
-    )
+def list_notifications(db: Session, user: User, limit: int, offset: int) -> tuple[list[Notification], int]:
+    query = select(Notification).where(Notification.user_id == user.id).order_by(Notification.created_at.desc(), Notification.id.desc())
+    return page_of(db, query, limit, offset)
+
+
+def unread_count(db: Session, user: User) -> int:
+    return db.scalar(select(func.count()).select_from(Notification).where(Notification.user_id == user.id, Notification.read.is_(False)))
 
 
 def mark_read(db: Session, user: User, ids: list[int] | None) -> None:

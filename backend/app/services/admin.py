@@ -4,7 +4,7 @@ import re
 import secrets
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -28,11 +28,10 @@ from app.models import (
 )
 from app.services.auth import email_taken, revoke_all_sessions, validate_email, validate_phone
 from app.services.changes import config_changes, describe, join, list_change, schedule_text
-from app.services.common import audit, load_config, money, require_roles, utcnow
+from app.services.common import audit, load_config, money, page_of, require_roles, utcnow
 
 ROLES = ("KHACH", "KTV", "DPV", "QTV")
 SETUP_LINK_HOURS = 72
-AUDIT_LIMIT = 80
 
 
 def overview(db: Session, user: User) -> dict:
@@ -55,11 +54,27 @@ def overview(db: Session, user: User) -> dict:
         "services": db.scalars(select(Service).order_by(Service.id)).all(),
         "parts": db.scalars(select(Part).order_by(Part.id)).all(),
         "categories": db.scalars(select(Category).order_by(Category.position)).all(),
-        "users": db.scalars(select(User).order_by(User.id)).all(),
         "config": config,
         "allAreas": list(dict.fromkeys(WARDS + config.areas)),
-        "audit": db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(AUDIT_LIMIT)).all(),
     }
+
+
+def list_users(db: Session, admin: User, q: str, role: str | None, limit: int, offset: int) -> tuple[list[User], int]:
+    """Tài khoản theo vai trò, tìm theo tên, email hoặc số điện thoại; tài khoản nội bộ trước khách hàng."""
+    require_roles(admin, "QTV")
+    query = select(User)
+    if role:
+        query = query.where(User.roles.contains([role]))
+    if q.strip():
+        pattern = f"%{q.strip().lower()}%"
+        query = query.where(or_(func.lower(User.name).like(pattern), func.lower(User.email).like(pattern), User.phone.like(pattern)))
+    staff_first = User.roles.contains(["KHACH"])
+    return page_of(db, query.order_by(staff_first, User.id), limit, offset)
+
+
+def list_audit(db: Session, admin: User, limit: int, offset: int) -> tuple[list[AuditLog], int]:
+    require_roles(admin, "QTV")
+    return page_of(db, select(AuditLog).order_by(AuditLog.id.desc()), limit, offset)
 
 
 def save_service(db: Session, user: User, data) -> Service:

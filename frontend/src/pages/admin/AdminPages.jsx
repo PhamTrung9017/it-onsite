@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Pencil, Plus, Save, ShieldCheck, X } from 'lucide-react';
-import { useAction, useLoad } from '../../hooks/useApi.js';
+import { useAction, useLoad, usePaged } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
 import { ROLE_LABEL, useAuth } from '../../context/AppContext.jsx';
-import { Alert, Badge, Button, Card, ErrorState, Field, Loading, Modal, Money, PageHead, Stars } from '../../components/ui.jsx';
+import { Alert, Badge, Button, Card, ErrorState, Field, LoadMore, Loading, Modal, Money, PageHead, Stars } from '../../components/ui.jsx';
 import { WEEKDAY_LABEL, formatDate, formatDateTime, formatSchedule, toDateInput } from '../../lib/format.js';
 import { DEFAULT_SCHEDULE } from '../../lib/rules.js';
 
@@ -182,38 +182,43 @@ export const PartsPage = () => <CatalogPage kind="part" />;
 /* ---------------- UC22 Tài khoản và phân quyền ---------------- */
 const ROLES = ['KHACH', 'KTV', 'DPV', 'QTV'];
 export function AccountsPage() {
-  const { data, loading, error, reload } = useAdmin();
   const { user: me } = useAuth();
   const { busy, run } = useAction();
   const [edit, setEdit] = useState(null);
   const [create, setCreate] = useState(null);
   const [filter, setFilter] = useState('');
-  if (loading) return <Loading />;
-  if (error) return <ErrorState error={error} onRetry={reload} />;
-  const users = data.users.filter((u) => !filter || u.roles.includes(filter));
+  const [search, setSearch] = useState('');
+  const [q, setQ] = useState('');
+  useEffect(() => { const timer = setTimeout(() => setQ(search.trim()), 300); return () => clearTimeout(timer); }, [search]);
+  const { items: users, total, loading, more, error, reload, loadMore } = usePaged((paging) => api.listUsers({ q, role: filter, ...paging }), [q, filter], 30);
   return (
     <>
       <PageHead title="Tài khoản và phân quyền" sub="Một tài khoản có thể giữ nhiều vai trò"
         actions={<>
+          <input className="input" style={{ width: 220 }} placeholder="Tìm tên, email, số điện thoại" aria-label="Tìm tài khoản" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="select" style={{ width: 180 }} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Lọc vai trò"><option value="">Tất cả vai trò</option>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
           <Button icon={Plus} onClick={() => setCreate({ name: '', email: '', phone: '', roles: ['DPV'] })}>Tạo tài khoản nội bộ</Button>
         </>} />
-      <Card bodyClass="table-wrap">
-        <table className="table">
-          <thead><tr><th>Người dùng</th><th>Liên hệ</th><th>Vai trò</th><th>Trạng thái</th><th /></tr></thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td className="strong">{u.name}{u.id === me.id && <span className="tiny muted"> (bạn)</span>}</td>
-                <td className="small"><div>{u.email}</div><div className="muted">{u.phone}</div></td>
-                <td><div className="row-sm wrap">{u.roles.map((r) => <Badge key={r} tone={r === 'QTV' ? 'accent' : r === 'KHACH' ? 'muted' : 'primary'} plain>{ROLE_LABEL[r]}</Badge>)}</div></td>
-                <td>{u.locked ? <Badge tone="danger">Đã khóa</Badge> : <Badge tone="success">Hoạt động</Badge>}</td>
-                <td className="right"><Button variant="ghost" size="sm" icon={ShieldCheck} onClick={() => setEdit({ ...u })}>Phân quyền</Button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {loading ? <Loading /> : error ? <ErrorState error={error} onRetry={reload} /> : (
+        <Card bodyClass="table-wrap">
+          <table className="table">
+            <thead><tr><th>Người dùng</th><th>Liên hệ</th><th>Vai trò</th><th>Trạng thái</th><th /></tr></thead>
+            <tbody>
+              {users.length === 0 && <tr><td colSpan={5} className="small muted">Không tìm thấy tài khoản phù hợp.</td></tr>}
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td className="strong">{u.name}{u.id === me.id && <span className="tiny muted"> (bạn)</span>}</td>
+                  <td className="small"><div>{u.email}</div><div className="muted">{u.phone}</div></td>
+                  <td><div className="row-sm wrap">{u.roles.map((r) => <Badge key={r} tone={r === 'QTV' ? 'accent' : r === 'KHACH' ? 'muted' : 'primary'} plain>{ROLE_LABEL[r]}</Badge>)}</div></td>
+                  <td>{u.locked ? <Badge tone="danger">Đã khóa</Badge> : <Badge tone="success">Hoạt động</Badge>}</td>
+                  <td className="right"><Button variant="ghost" size="sm" icon={ShieldCheck} onClick={() => setEdit({ ...u })}>Phân quyền</Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <LoadMore shown={users.length} total={total} loading={more} onClick={loadMore} />
+        </Card>
+      )}
       <Modal open={Boolean(edit)} title={`Phân quyền: ${edit?.name || ''}`} onClose={() => setEdit(null)}
         footer={<><Button variant="outline" onClick={() => setEdit(null)}>Đóng</Button><Button loading={busy === 'roles'} onClick={async () => { if (await run('roles', () => api.saveUserRoles(edit.id, { roles: edit.roles, locked: edit.locked }), 'Đã cập nhật phân quyền.')) { setEdit(null); reload(true); } }}>Lưu</Button></>}>
         {edit && (
@@ -325,19 +330,20 @@ function TelegramGroupCard({ config, onDisconnect, busy }) {
 
 /* ---------------- Nhật ký hệ thống (NFR-08) ---------------- */
 export function AuditPage() {
-  const { data, loading, error, reload } = useAdmin();
+  const { items, total, loading, more, error, reload, loadMore } = usePaged((paging) => api.listAudit(paging), [], 50);
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   return (
     <>
       <PageHead title="Nhật ký hệ thống" sub="Thay đổi trạng thái phiếu, báo giá, thanh toán, bảng giá và phân quyền" />
       <Card bodyClass="table-wrap">
-        {data.audit.length === 0 ? <div className="card-body small muted">Chưa có thao tác nào được ghi lại trong phiên dùng thử này.</div> : (
+        {items.length === 0 ? <div className="card-body small muted">Chưa có thao tác nào được ghi lại.</div> : (
           <table className="table">
             <thead><tr><th>Thời điểm</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead>
-            <tbody>{data.audit.map((a, i) => <tr key={i}><td className="small nowrap">{formatDateTime(a.at)}</td><td className="small">{a.userName}</td><td><Badge tone="muted" plain>{a.action}</Badge></td><td className="mono small">{a.target}</td><td className="small muted">{a.detail}</td></tr>)}</tbody>
+            <tbody>{items.map((a, i) => <tr key={i}><td className="small nowrap">{formatDateTime(a.at)}</td><td className="small">{a.userName}</td><td><Badge tone="muted" plain>{a.action}</Badge></td><td className="mono small">{a.target}</td><td className="small muted">{a.detail}</td></tr>)}</tbody>
           </table>
         )}
+        <LoadMore shown={items.length} total={total} loading={more} onClick={loadMore} />
       </Card>
     </>
   );

@@ -26,6 +26,7 @@ Tài liệu API tự sinh: http://localhost:8000/docs
 | `python -m app.seed demo` | Xóa toàn bộ dữ liệu và nạp dữ liệu trình diễn |
 | `pytest --cov` | Chạy kiểm thử và đo độ bao phủ, yêu cầu tối thiểu 80% (cần cơ sở dữ liệu `itonsite_test`) |
 | `ruff check . && ruff format --check .` | Kiểm tra quy ước mã nguồn |
+| `locust -f loadtest/locustfile.py --host <địa chỉ> --headless -u 50 -r 10 -t 3m` | Kiểm thử tải 50 người dùng đồng thời (NFR-01), cài bằng `pip install -r loadtest/requirements.txt` |
 
 Kiểm thử dùng cơ sở dữ liệu riêng, mặc định `postgresql+psycopg://itonsite:itonsite@localhost:5432/itonsite_test`; đổi bằng biến môi trường `DATABASE_URL`.
 
@@ -79,10 +80,19 @@ Tất cả có tiền tố `/api/v1`. Xác thực bằng `Authorization: Bearer 
 | Khách hàng | `POST /classify`, `POST /tickets`, `GET /tickets/mine`, `GET /tickets/{id}`, `POST /tickets/{id}/cancel`, `/reschedule`, `/quotes/{qid}/decision`, `/acceptance`, `GET /tickets/{id}/deposit`, `POST /tickets/{id}/deposit/transfer`, `GET /tickets/{id}/payment`, `POST /tickets/{id}/payment/transfer`, `/payment/cash`, `/review`, `GET /warranties/mine`, `POST /warranty-claims` | UC04–UC07, UC11, UC13–UC16 |
 | Kỹ thuật viên | `GET /tech/jobs`, `GET /tech/profile`, `POST /tickets/{id}/assignment/response`, `/check-in`, `/quotes`, `/onsite-code`, `/onsite-code/confirm`, `PUT /tickets/{id}/checklist`, `POST/DELETE /tickets/{id}/photos`, `POST /tickets/{id}/complete`, `/payment/cash-received` | UC09, UC10, UC12, UC14 |
 | Điều phối | `GET /dispatch/board`, `POST /tickets/{id}/receive`, `GET /tickets/{id}/technician-suggestions`, `POST /tickets/{id}/assign`, `GET /deposits`, `POST /tickets/{id}/deposit/confirm`, `/deposit/refund`, `GET /payments`, `POST /tickets/{id}/payment/confirm`, `/payment/reconcile`, `GET /warranty-claims`, `POST /warranty-claims/{id}/decision` | UC05, UC08, UC14, UC15 |
-| Thông báo | `GET /notifications`, `POST /notifications/read` | UC17 |
-| Quản trị | `GET /admin/overview`, `PUT /admin/services`, `/admin/parts`, `/admin/technicians`, `/admin/users/{id}/roles`, `POST /admin/users`, `PUT /admin/config`, `GET /admin/reports`, `GET /admin/reports/export` (kỳ `days=`, `month=` hoặc `from=`&`to=`; lọc `techId=`, `category=`, `ward=`) | UC18–UC23 |
+| Thông báo | `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/read` | UC17 |
+| Quản trị | `GET /admin/overview`, `GET /admin/users` (tìm `q=`, lọc `role=`), `GET /admin/audit`, `PUT /admin/services`, `/admin/parts`, `/admin/technicians`, `/admin/users/{id}/roles`, `POST /admin/users`, `PUT /admin/config`, `GET /admin/reports`, `GET /admin/reports/export` (kỳ `days=`, `month=` hoặc `from=`&`to=`; lọc `techId=`, `category=`, `ward=`) | UC18–UC23 |
+
+Danh sách có thể dài (`/tickets/mine` lọc `group=open|done|cancelled`, `/notifications`, `/warranty-claims`, `/admin/users`, `/admin/audit`) phân trang bằng `limit` (mặc định 20, tối đa 100) và `offset`; tổng số bản ghi trả trong header `X-Total-Count`.
 
 Lỗi nghiệp vụ trả về `{"detail": "<thông báo tiếng Việt>"}` với mã 400, 401, 403, 404, 409 hoặc 429.
+
+## Bảo mật
+
+- Mọi endpoint trừ đăng ký, đăng nhập, làm mới phiên, quên mật khẩu, danh mục và kiểm tra trạng thái đều cần đăng nhập; quyền theo vai trò kiểm tra ở backend (NFR-05). `tests/test_security.py` thử toàn bộ endpoint với từng vai trò.
+- Truy vấn qua ORM có tham số; nội dung người dùng nhập được trả về dạng chữ thuần, giao diện React không chèn HTML; ảnh tải lên chỉ nhận JPEG, PNG, WebP đúng chữ ký tệp (NFR-09).
+- Phản hồi có `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`; dữ liệu API không lưu bộ nhớ đệm. Giao diện qua nginx có thêm Content-Security-Policy (`frontend/security-headers.conf`).
+- Khi `APP_ENV=production`, backend không khởi động nếu `JWT_SECRET`, `CREDENTIAL_KEY` là giá trị mặc định hoặc ngắn hơn 32 ký tự.
 
 ## Tác vụ nền
 

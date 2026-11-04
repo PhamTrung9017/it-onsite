@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -100,6 +100,12 @@ def notify(
             )
         if email and settings.smtp_host and user.email:
             db.add(OutboxMessage(channel="email", recipient=user.email, subject=f"[IT OnSite] {title}", body=body, next_attempt_at=now))
+
+
+def page_of(db: Session, query, limit: int, offset: int) -> tuple[list, int]:
+    """Một trang kết quả của câu truy vấn kèm tổng số bản ghi."""
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+    return list(db.scalars(query.limit(limit).offset(offset))), total
 
 
 def find_ticket(db: Session, ticket_id: str, lock: bool = False) -> Ticket:
