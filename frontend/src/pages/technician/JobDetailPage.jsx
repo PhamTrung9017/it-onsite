@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  Banknote, CheckCircle2, ClipboardPlus, Eye, EyeOff, FilePlus2, MapPin, Navigation, Phone, PlayCircle, Plus, Send, X,
+  Banknote, CheckCircle2, ClipboardPlus, Eye, EyeOff, FilePlus2, MapPin, Phone, PlayCircle, Plus, Send, X,
 } from 'lucide-react';
 import { useAction, useLoad, useNow } from '../../hooks/useApi.js';
 import { useNotifications, useToast } from '../../context/AppContext.jsx';
@@ -48,8 +48,6 @@ export default function JobDetailPage() {
   const left = waitingResponse ? Math.max(0, new Date(t.assignment.deadline).getTime() - now) : 0;
   const checklist = t.checklist.length ? t.checklist : DEFAULT_CHECKLIST.map((text) => ({ text, done: false }));
   const working = t.status === STATUS.DANG_THUC_HIEN;
-  const mapUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(`${t.address}, ${t.ward}, Thành phố Hồ Chí Minh`)}`;
-
   const saveChecklist = (list) => act('ck', () => api.updateWork(t.id, { checklist: list }));
 
   return (
@@ -172,10 +170,7 @@ export default function JobDetailPage() {
                 </div>
               )}
               {!waitingResponse && t.status !== STATUS.HOAN_TAT && (
-                <div className="grid-2" style={{ gap: 8 }}>
-                  <a className="btn btn-outline btn-sm" href={`tel:${t.customer?.phone}`}><Phone size={16} aria-hidden />Gọi khách</a>
-                  <a className="btn btn-outline btn-sm" href={mapUrl} target="_blank" rel="noreferrer"><Navigation size={16} aria-hidden />Chỉ đường</a>
-                </div>
+                <a className="btn btn-outline btn-sm btn-block" href={`tel:${t.customer?.phone}`}><Phone size={16} aria-hidden />Gọi khách</a>
               )}
               {t.urgency === 'CAO' && <Badge tone="danger" plain>Mức khẩn cao</Badge>}
             </div>
