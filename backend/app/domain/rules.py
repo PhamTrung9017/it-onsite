@@ -30,6 +30,7 @@ class BusinessConfig:
     bank_account_name: str = ""
     base_salary: int = 0
     commission_percent: float = 0
+    telegram_group_chat_id: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "BusinessConfig":
@@ -53,6 +54,7 @@ class BusinessConfig:
             bank_account_name=bank.get("accountName", ""),
             base_salary=int(payroll.get("baseSalary", 0)),
             commission_percent=float(payroll.get("commissionPercent", 0)),
+            telegram_group_chat_id=str(data.get("telegramGroupChatId") or ""),
         )
 
     def to_dict(self) -> dict:
@@ -73,6 +75,7 @@ class BusinessConfig:
                 "accountName": self.bank_account_name,
             },
             "payroll": {"baseSalary": self.base_salary, "commissionPercent": self.commission_percent},
+            "telegramGroupChatId": self.telegram_group_chat_id,
         }
 
 

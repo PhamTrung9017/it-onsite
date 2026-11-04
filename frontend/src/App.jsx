@@ -66,7 +66,7 @@ export default function App() {
           <Route index element={<BoardPage />} />
           <Route path="thanh-toan" element={<PaymentsPage />} />
           <Route path="bao-hanh" element={<WarrantyClaimsPage />} />
-          <Route path="thong-bao" element={<NotificationsPage />} />
+          <Route path="thong-bao" element={<NotificationsPage telegramText="Nhận tin phiếu mới, phí giữ lịch, phản hồi của kỹ thuật viên qua Telegram." />} />
         </Route>
       </Route>
 
@@ -80,7 +80,7 @@ export default function App() {
           <Route path="tai-khoan" element={<AccountsPage />} />
           <Route path="cau-hinh" element={<ConfigPage />} />
           <Route path="nhat-ky" element={<AuditPage />} />
-          <Route path="thong-bao" element={<NotificationsPage />} />
+          <Route path="thong-bao" element={<NotificationsPage telegramText="Kết nối Telegram để nhận thông báo và kết nối nhóm chat chung của đội với IT OnSite." />} />
         </Route>
       </Route>
     </Routes>

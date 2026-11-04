@@ -1,6 +1,6 @@
 """Hàm dùng chung cho các nghiệp vụ: thời gian, cấu hình, nhật ký, thông báo, chuyển trạng thái."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,13 +14,11 @@ from app.models import (
     AuditLog,
     Notification,
     OutboxMessage,
-    Payment,
     Setting,
     Technician,
     Ticket,
     TicketHistory,
     User,
-    Warranty,
 )
 
 SYSTEM_NAME = "Hệ thống"
@@ -74,8 +72,19 @@ def tech_of_user(db: Session, user: User) -> Technician | None:
     return db.scalar(select(Technician).where(Technician.user_id == user.id))
 
 
-def notify(db: Session, user_ids: list[int | None], title: str, body: str, ticket_id: str | None = None, email: bool = True) -> None:
-    """Thông báo trên web, kèm Telegram và email đưa vào hàng đợi gửi (UC17); `email=False` khi đã gửi email riêng."""
+def notify(
+    db: Session,
+    user_ids: list[int | None],
+    title: str,
+    body: str,
+    ticket_id: str | None = None,
+    email: bool = True,
+    buttons: dict | None = None,
+) -> None:
+    """Thông báo trên web, kèm Telegram và email đưa vào hàng đợi gửi (UC17).
+
+    `email=False` khi đã gửi email riêng; `buttons` là nút bấm kèm tin Telegram.
+    """
     settings = get_settings()
     now = utcnow()
     for user_id in dict.fromkeys(uid for uid in user_ids if uid):
@@ -84,7 +93,11 @@ def notify(db: Session, user_ids: list[int | None], title: str, body: str, ticke
         if user is None:
             continue
         if settings.telegram_bot_token and user.telegram_chat_id:
-            db.add(OutboxMessage(channel="telegram", recipient=user.telegram_chat_id, subject=title, body=body, next_attempt_at=now))
+            db.add(
+                OutboxMessage(
+                    channel="telegram", recipient=user.telegram_chat_id, subject=title, body=body, reply_markup=buttons, next_attempt_at=now
+                )
+            )
         if email and settings.smtp_host and user.email:
             db.add(OutboxMessage(channel="email", recipient=user.email, subject=f"[IT OnSite] {title}", body=body, next_attempt_at=now))
 
@@ -196,56 +209,6 @@ def ticket_revenue(ticket: Ticket) -> int:
 
 def amount_due(ticket: Ticket, config: BusinessConfig) -> int:
     return amount_due_rule(main_quote_rejected(ticket), approved_total(ticket), ticket.is_warranty, config, deposit_held(ticket))
-
-
-def open_payment(db: Session, ticket: Ticket, actor: User, config: BusinessConfig) -> None:
-    """Mở bước thanh toán; phí giữ lịch được trừ vào số tiền. Không còn phải trả thêm thì phiếu hoàn tất luôn."""
-    amount = amount_due(ticket, config)
-    if ticket.deposit and ticket.deposit.status == DepositStatus.DA_XAC_NHAN:
-        ticket.deposit.status = DepositStatus.DA_TRU
-        ticket.deposit.settled_at = utcnow()
-    if amount > 0:
-        ticket.payment = Payment(amount=amount, method=None, status="CHO_THANH_TOAN")
-        return
-    ticket.payment = Payment(amount=0, method=None, status="MIEN_PHI", paid_at=utcnow())
-    complete(db, ticket, actor, "Đã trừ phí giữ lịch, không phải trả thêm" if ticket.deposit else "Không phát sinh chi phí", config)
-
-
-def complete(db: Session, ticket: Ticket, actor: User, note: str, config: BusinessConfig) -> None:
-    """Hoàn tất phiếu và phát hành bảo hành theo từng hạng mục đã duyệt (BR-07).
-
-    Phiếu bảo hành không phát hành bảo hành mới, thời hạn vẫn tính theo phiếu gốc.
-    """
-    transition(db, ticket, Status.HOAN_TAT, actor, note, notified_separately=(ticket.customer_id,))
-    now = utcnow()
-    ticket.completed_at = now
-    for quote in [] if ticket.is_warranty else ticket.quotes:
-        if quote.status not in ("DA_DUYET", "DUYET_MOT_PHAN"):
-            continue
-        for item in quote.items:
-            if item.selected and item.warranty_days > 0:
-                db.add(
-                    Warranty(
-                        ticket_id=ticket.id,
-                        quote_item_id=item.id,
-                        device_id=ticket.device_id,
-                        customer_id=ticket.customer_id,
-                        name=item.name,
-                        start_at=now,
-                        end_at=now + timedelta(days=item.warranty_days),
-                    )
-                )
-    notify(
-        db,
-        [ticket.customer_id],
-        "Phiếu đã hoàn tất",
-        f"Cảm ơn bạn! Phiếu {ticket.id} đã hoàn tất. Bạn có thể đánh giá dịch vụ trong {config.review_window_days} ngày.",
-        ticket.id,
-        email=False,
-    )
-    from app.services.receipts import send_receipt
-
-    send_receipt(db, ticket)
 
 
 def money(value: int) -> str:

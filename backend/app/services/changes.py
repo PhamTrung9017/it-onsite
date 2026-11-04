@@ -52,6 +52,10 @@ def join(*parts: str | None) -> str:
     return text or "Không thay đổi"
 
 
+def _connected(value: bool) -> str:
+    return "đã kết nối" if value else "chưa kết nối"
+
+
 def _hours(config: BusinessConfig) -> str:
     return f"{config.service_start}–{config.service_end}"
 
@@ -74,6 +78,7 @@ def config_changes(old: BusinessConfig, new: BusinessConfig) -> str:
                 ("Chủ tài khoản", old.bank_account_name, new.bank_account_name),
                 ("Lương cứng", old.base_salary, new.base_salary, money),
                 ("Hoa hồng (%)", old.commission_percent, new.commission_percent),
+                ("Nhóm Telegram", bool(old.telegram_group_chat_id), bool(new.telegram_group_chat_id), _connected),
             ]
         ),
         list_change("Khu vực phục vụ", old.areas, new.areas),

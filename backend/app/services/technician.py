@@ -12,9 +12,8 @@ from app.core.security import token_digest
 from app.domain.rules import can_complete
 from app.domain.status import CLOSED_STATUSES, Status
 from app.models import Assignment, Part, Photo, Quote, QuoteItem, Service, Ticket, User
-from app.services import media
+from app.services import media, telegram
 from app.services.common import (
-    complete,
     dispatcher_ids,
     find_ticket,
     load_config,
@@ -27,6 +26,7 @@ from app.services.common import (
     transition,
     utcnow,
 )
+from app.services.completion import complete
 from app.services.tickets import apply_quote_decision
 
 MAX_WORK_PHOTOS = 6
@@ -72,6 +72,7 @@ def respond_assignment(db: Session, user: User, ticket_id: str, accept: bool, re
     if accept:
         assignment.result = "NHAN"
         transition(db, ticket, Status.KTV_DA_NHAN, user)
+        telegram.post_group(db, f"{user.name} đã nhận việc: {telegram.job_summary(db, ticket)}.")
     else:
         if not reason.strip():
             raise ApiError("Vui lòng cho biết lý do từ chối.")
@@ -79,6 +80,7 @@ def respond_assignment(db: Session, user: User, ticket_id: str, accept: bool, re
         assignment.reject_reason = reason.strip()
         transition(db, ticket, Status.DA_TIEP_NHAN, user, f"KTV từ chối: {reason.strip()}")
         notify(db, dispatcher_ids(db), "KTV từ chối việc", f"{user.name} từ chối phiếu {ticket.id}. Vui lòng phân công lại.", ticket.id)
+        telegram.post_group(db, f"{user.name} từ chối phiếu {ticket.id} ({reason.strip()}). Cần phân công lại.")
     return ticket
 
 

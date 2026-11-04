@@ -9,6 +9,7 @@ import { Badge, Button, Card, DeviceIcon, Empty, ErrorState, Loading, Money, Pag
 import { api } from '../services/api.js';
 import { useAction, useLoad } from '../hooks/useApi.js';
 import { useNotifications } from '../context/AppContext.jsx';
+import { TelegramCard } from './TelegramCard.jsx';
 
 /** Dòng thời gian trạng thái: các bước luồng chính, bước đã qua lấy thời điểm từ lịch sử. */
 export function TicketTimeline({ ticket }) {
@@ -147,7 +148,7 @@ export function AddressLine({ ticket }) {
 }
 
 /** Màn hình thông báo dùng chung cho mọi vai trò. */
-export function NotificationsPage({ ticketLink }) {
+export function NotificationsPage({ ticketLink, telegramText }) {
   const { data, loading, error, reload, setData } = useLoad(() => api.listNotifications(), []);
   const { refresh } = useNotifications();
   const { busy, run } = useAction();
@@ -166,6 +167,7 @@ export function NotificationsPage({ ticketLink }) {
     <>
       <PageHead title="Thông báo" sub={unread ? `${unread} thông báo chưa đọc` : 'Bạn đã đọc hết thông báo'}
         actions={unread > 0 && <Button variant="outline" size="sm" icon={CheckCheck} loading={busy === 'all'} onClick={readAll}>Đánh dấu đã đọc tất cả</Button>} />
+      {telegramText && <div style={{ marginBottom: 16 }}><TelegramCard text={telegramText} /></div>}
       <Card bodyClass="list">
         {data.length === 0 ? <Empty icon={Bell} title="Chưa có thông báo">Các cập nhật về phiếu của bạn sẽ hiện ở đây.</Empty> : data.map((n) => {
           const content = (

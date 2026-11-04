@@ -292,8 +292,34 @@ export function ConfigPage() {
             <Field label="Chủ tài khoản" htmlFor="bh"><input id="bh" className="input" value={cfg.bank.accountName} onChange={(e) => setCfg({ ...cfg, bank: { ...cfg.bank, accountName: e.target.value.toUpperCase() } })} /></Field>
           </div>
         </Card>
+        <TelegramGroupCard config={cfg} onDisconnect={async () => {
+          if (await run('tg', () => api.saveConfig({ ...cfg, telegramGroupChatId: '' }), 'Đã ngắt kết nối nhóm Telegram.')) reload(true);
+        }} busy={busy === 'tg'} />
       </div>
     </>
+  );
+}
+
+/** Nhóm chat Telegram chung của đội: bot báo phiếu chờ phân công, phân công, phản hồi của kỹ thuật viên, phiếu hoàn tất. */
+function TelegramGroupCard({ config, onDisconnect, busy }) {
+  const { data } = useLoad(() => api.getCatalog(), []);
+  const bot = data?.features?.telegramBot;
+  const connected = Boolean(config.telegramGroupChatId);
+  return (
+    <Card title="Nhóm Telegram của đội" action={bot && <Badge tone={connected ? 'success' : 'muted'}>{connected ? 'Đã kết nối' : 'Chưa kết nối'}</Badge>}>
+      {!bot ? <p className="small muted">Máy chủ chưa bật bot Telegram.</p> : (
+        <div className="stack-sm">
+          <p className="small muted">Bot báo vào nhóm phiếu chờ phân công, việc đã phân công, kỹ thuật viên nhận hoặc từ chối, phiếu hủy và phiếu hoàn tất; không ghi số điện thoại, địa chỉ của khách. Kỹ thuật viên nhận hoặc từ chối việc bằng nút bấm trong tin nhắn riêng.</p>
+          {connected ? <div><Button variant="outline" size="sm" loading={busy} onClick={onDisconnect}>Ngắt kết nối nhóm</Button></div> : (
+            <ol className="small" style={{ paddingLeft: 20, margin: 0 }}>
+              <li>Kết nối Telegram của bạn ở trang Thông báo.</li>
+              <li>Thêm bot @{bot} vào nhóm chat của đội.</li>
+              <li>Gửi lệnh /ketnoinhom trong nhóm.</li>
+            </ol>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 

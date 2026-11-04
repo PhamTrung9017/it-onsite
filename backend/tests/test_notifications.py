@@ -30,7 +30,7 @@ def test_outbox_retries_then_gives_up_nfr14(monkeypatch):
     monkeypatch.setattr(settings, "telegram_bot_token", "token")
     calls = []
 
-    def failing(chat_id, title, body):
+    def failing(chat_id, title, body, markup=None):
         calls.append(chat_id)
         raise RuntimeError("mạng lỗi")
 
@@ -54,7 +54,7 @@ def test_outbox_sends_successfully(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "telegram_bot_token", "token")
     sent = []
-    monkeypatch.setattr(outbox, "send_telegram", lambda chat_id, title, body: sent.append((chat_id, title)))
+    monkeypatch.setattr(outbox, "send_telegram", lambda chat_id, title, body, markup=None: sent.append((chat_id, title)))
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email == "ktv@demo.vn"))
         user.telegram_chat_id = "777"

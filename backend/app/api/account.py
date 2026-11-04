@@ -6,7 +6,7 @@ from app.api.deps import CurrentUser, Db
 from app.core.config import get_settings
 from app.core.errors import forbidden
 from app.schemas import DeviceBody, MarkReadBody, ProfileBody, ReasonBody
-from app.services import account
+from app.services import account, telegram_bot
 from app.services.present import device_json, iso, user_json
 
 router = APIRouter(tags=["Tài khoản"])
@@ -87,14 +87,10 @@ def telegram_webhook(
     db: Db,
     secret: Annotated[str | None, Header(alias="X-Telegram-Bot-Api-Secret-Token")] = None,
 ) -> dict:
-    """Bot nhận lệnh /start <mã> để gắn cuộc trò chuyện Telegram với tài khoản."""
+    """Bot nhận lệnh /start <mã> để gắn tài khoản, /ketnoinhom để kết nối nhóm chung, nút Nhận/Từ chối việc của KTV."""
     expected = get_settings().telegram_webhook_secret
     if not expected or secret != expected:
         raise forbidden()
-    message = update.get("message") or {}
-    text = (message.get("text") or "").strip()
-    chat_id = str((message.get("chat") or {}).get("id", ""))
-    if text.startswith("/start ") and chat_id:
-        account.bind_telegram(db, text.split(maxsplit=1)[1], chat_id)
-        db.commit()
+    telegram_bot.handle_update(db, update)
+    db.commit()
     return {"ok": True}
