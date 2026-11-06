@@ -26,3 +26,14 @@ Giao diện chạy tại http://localhost:8080, API tại http://localhost:8000 
 3. Mỗi lần khởi động, máy chủ chạy `alembic upgrade head`, `python -m app.seed auto` (chỉ nạp dữ liệu khi CSDL còn trống) rồi tự đăng ký webhook Telegram với địa chỉ `RENDER_EXTERNAL_URL`.
 
 Gói miễn phí của Render chặn cổng SMTP nên email gửi qua `infra/email-relay/Code.gs` (Google Apps Script, `EMAIL_RELAY_URL`, `EMAIL_RELAY_SECRET`). Dịch vụ tạm ngủ sau 15 phút không có truy cập; lần truy cập kế tiếp mất khoảng một phút để khởi động lại.
+
+## Sao lưu và khôi phục
+
+Workflow `.github/workflows/backup.yml` chạy lúc 02:00 mỗi ngày (chạy tay được ở tab Actions): sao lưu CSDL bằng `pg_dump`, khôi phục thử vào một CSDL tạm và kiểm tra dữ liệu, mã hóa AES-256 rồi lưu thành artifact giữ 7 ngày (7 bản gần nhất). Cần hai secret của repo: `BACKUP_DATABASE_URL` (chuỗi kết nối Neon) và `BACKUP_PASSPHRASE`.
+
+Khôi phục từ một bản sao lưu:
+
+```bash
+gpg -d -o itonsite.dump itonsite.dump.gpg                 # nhập BACKUP_PASSPHRASE
+pg_restore --clean --if-exists --no-owner --no-privileges -d "<chuỗi kết nối CSDL>" itonsite.dump
+```
