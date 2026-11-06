@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: itonsite
+          POSTGRES_PASSWORD: itonsite
+          POSTGRES_DB: itonsite_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U itonsite"
+          --health-interval 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+psycopg://itonsite:itonsite@localhost:5432/itonsite_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest --cov --cov-report=term
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: itonsite
+          POSTGRES_PASSWORD: itonsite
+          POSTGRES_DB: itonsite
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U itonsite"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://itonsite:itonsite@localhost:5432/itonsite
+      E2E_RESET_COMMAND: python -m app.seed demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Chạy backend
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          alembic upgrade head
+          python -m app.seed demo
+          nohup uvicorn app.main:app --port 8000 > ../uvicorn.log 2>&1 &
+      - name: Cài trình duyệt
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Kiểm thử đầu-cuối với API giả lập
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Kiểm thử đầu-cuối với backend
+        working-directory: frontend
+        run: npm run test:e2e:backend
+
+  docker:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: itonsite
+          POSTGRES_PASSWORD: itonsite
+          POSTGRES_DB: itonsite
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U itonsite"
+          --health-interval 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dựng image chạy toàn bộ hệ thống (Render)
+        run: docker build --build-arg VITE_DEMO_ACCOUNTS=true -t it-onsite .
+      - name: Chạy image như trên Render
+        run: |
+          docker run -d --name app --network host \
+            -e APP_ENV=production -e PORT=10000 -e DEMO_DATA=true \
+            -e DATABASE_URL=postgresql://itonsite:itonsite@localhost:5432/itonsite \
+            -e JWT_SECRET=$(openssl rand -hex 32) -e CREDENTIAL_KEY=$(openssl rand -hex 32) \
+            it-onsite
+          for i in $(seq 1 60); do curl -fs http://localhost:10000/api/v1/health && break; sleep 2; done
+      - name: Kiểm tra giao diện, API, ảnh trên cùng địa chỉ
+        run: |
+          curl -fs http://localhost:10000/ | grep -q '<div id="root">'
+          curl -fs http://localhost:10000/khach/tao-yeu-cau | grep -q '<div id="root">'
+          curl -fsI http://localhost:10000/ | grep -qi "content-security-policy"
+          curl -fs http://localhost:10000/api/v1/catalog | grep -q '"services"'
+          curl -fsI http://localhost:10000/media/mau.svg | grep -qi "image/svg+xml"
+          curl -fs -X POST http://localhost:10000/api/v1/auth/login -H 'Content-Type: application/json' \
+            -d '{"identifier":"qtv@demo.vn","password":"123456"}' | grep -q accessToken
+      - name: Nhật ký máy chủ
+        if: always()
+        run: docker logs app
