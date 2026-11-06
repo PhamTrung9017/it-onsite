@@ -1,0 +1,73 @@
+name: Sao lưu CSDL
+
+# NFR-13: sao lưu CSDL bản chạy thật mỗi ngày lúc 02:00 (giờ Việt Nam), giữ 7 bản gần nhất, khôi phục thử mỗi lần sao lưu.
+# Cần 2 secret của repo: BACKUP_DATABASE_URL (chuỗi kết nối Neon) và BACKUP_PASSPHRASE (mật khẩu mã hóa bản sao lưu).
+on:
+  schedule:
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    services:
+      restore:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: khoiphuc
+          POSTGRES_PASSWORD: khoiphuc
+          POSTGRES_DB: khoiphuc
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U khoiphuc"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      RESTORE_URL: postgresql://khoiphuc:khoiphuc@localhost:5433/khoiphuc
+    steps:
+      - name: Kiểm tra cấu hình
+        id: check
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "Chưa đặt BACKUP_DATABASE_URL hoặc BACKUP_PASSPHRASE, bỏ qua."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sao lưu
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          docker run --rm -e DATABASE_URL postgres:17-alpine \
+            sh -c 'pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges' > itonsite.dump
+          ls -l itonsite.dump
+
+      - name: Khôi phục thử vào CSDL tạm
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          docker run --rm --network host -v "$PWD:/sao-luu" postgres:17-alpine \
+            pg_restore --no-owner --no-privileges --exit-on-error -d "$RESTORE_URL" /sao-luu/itonsite.dump
+          docker run --rm --network host postgres:17-alpine psql "$RESTORE_URL" -At -c \
+            "SELECT 'Phiên bản CSDL: ' || version_num FROM alembic_version;
+             SELECT 'Tài khoản: ' || count(*) FROM users;
+             SELECT 'Phiếu yêu cầu: ' || count(*) FROM tickets;"
+          test "$(docker run --rm --network host postgres:17-alpine psql "$RESTORE_URL" -At -c 'SELECT count(*) FROM users')" -gt 0
+
+      - name: Mã hóa
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          echo "NAME=csdl-$(TZ=Asia/Ho_Chi_Minh date +%Y%m%d-%H%M)" >> "$GITHUB_ENV"
+          gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+            --passphrase "$BACKUP_PASSPHRASE" -o itonsite.dump.gpg itonsite.dump
+          rm itonsite.dump
+
+      - name: Lưu bản sao lưu (giữ 7 ngày)
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: itonsite.dump.gpg
+          retention-days: 7
+          if-no-files-found: error

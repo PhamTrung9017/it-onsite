@@ -60,3 +60,18 @@ def call(method: str, payload: dict) -> None:
         response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("Gọi Telegram %s lỗi: %s", method, exc)
+
+
+def register_webhook() -> None:
+    """Khi khởi động: báo Telegram gửi tin của bot về địa chỉ công khai (HTTPS) của hệ thống, kèm khóa xác thực."""
+    settings = get_settings()
+    if not enabled() or not settings.app_url.startswith("https://"):
+        return
+    call(
+        "setWebhook",
+        {
+            "url": f"{settings.app_url.rstrip('/')}/api/v1/telegram/webhook",
+            "secret_token": settings.webhook_secret,
+            "allowed_updates": ["message", "callback_query"],
+        },
+    )

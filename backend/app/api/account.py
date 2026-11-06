@@ -1,3 +1,4 @@
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Header
@@ -95,8 +96,8 @@ def telegram_webhook(
     secret: Annotated[str | None, Header(alias="X-Telegram-Bot-Api-Secret-Token")] = None,
 ) -> dict:
     """Bot nhận lệnh /start <mã> để gắn tài khoản, /ketnoinhom để kết nối nhóm chung, nút Nhận/Từ chối việc của KTV."""
-    expected = get_settings().telegram_webhook_secret
-    if not expected or secret != expected:
+    settings = get_settings()
+    if not settings.telegram_bot_token or not secrets.compare_digest(secret or "", settings.webhook_secret):
         raise forbidden()
     telegram_bot.handle_update(db, update)
     db.commit()

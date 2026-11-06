@@ -201,7 +201,7 @@ def create_ticket(db: Session, user: User, data) -> Ticket:
         credentials=data.device_credentials.strip(),
     )
     for photo in data.photos:
-        ticket.photos.append(Photo(kind="request", url=media.save_image(photo)))
+        ticket.photos.append(Photo(kind="request", url=media.save_image(db, photo)))
     open_deposit(ticket, config)
     audit(db, user, "TAO_PHIEU", ticket.id)
     notify(db, dispatcher_ids(db), "Phiếu mới cần tiếp nhận", f"{user.name} vừa gửi phiếu {ticket.id}.", ticket.id)

@@ -7,11 +7,12 @@ python -m app.seed demo                          xóa toàn bộ dữ liệu, n�
 
 import argparse
 import getpass
+import os
 import random
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -41,8 +42,8 @@ from app.models import (
     User,
     Warranty,
 )
+from app.services import media
 from app.services.common import SYSTEM_NAME, money, utcnow
-from app.services.media import media_root
 
 MIN = timedelta(minutes=1)
 HOUR = timedelta(hours=1)
@@ -893,12 +894,29 @@ def reset_database(db: Session) -> None:
 def load_demo(db: Session) -> None:
     reset_database(db)
     catalog = load_catalog(db)
-    (media_root() / "mau.svg").write_text(SAMPLE_SVG, encoding="utf-8")
+    media.store(db, "mau.svg", "image/svg+xml", SAMPLE_SVG.encode())
     builder = DemoBuilder(db, catalog, utcnow())
     builder.people()
     builder.history_30_days()
     builder.live_tickets()
     builder.finish()
+
+
+def first_start(db: Session) -> bool:
+    """Lần khởi động đầu trên máy chủ: DEMO_DATA=true thì nạp dữ liệu trình diễn;
+    ngược lại nạp danh mục và tạo quản trị viên từ ADMIN_EMAIL, ADMIN_PASSWORD."""
+    if db.scalar(select(func.count()).select_from(User)):
+        return False
+    if os.environ.get("DEMO_DATA", "").lower() == "true":
+        load_demo(db)
+        return True
+    load_catalog(db)
+    email, password = os.environ.get("ADMIN_EMAIL", ""), os.environ.get("ADMIN_PASSWORD", "")
+    if email and len(password) >= 8:
+        create_admin(db, email, os.environ.get("ADMIN_NAME", "Quản trị viên"), password)
+    else:
+        print("Chưa tạo quản trị viên: cần ADMIN_EMAIL và ADMIN_PASSWORD (ít nhất 8 ký tự).")
+    return True
 
 
 def main() -> None:
@@ -909,9 +927,13 @@ def main() -> None:
     admin = sub.add_parser("admin")
     admin.add_argument("--email", required=True)
     admin.add_argument("--name", required=True)
+    sub.add_parser("auto", help="Chỉ nạp khi CSDL chưa có tài khoản nào (dùng khi khởi động máy chủ)")
     args = parser.parse_args()
     with SessionLocal() as db:
-        if args.command == "catalog":
+        if args.command == "auto":
+            if not first_start(db):
+                return
+        elif args.command == "catalog":
             load_catalog(db)
         elif args.command == "demo":
             load_demo(db)

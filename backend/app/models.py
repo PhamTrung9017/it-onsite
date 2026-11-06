@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     SmallInteger,
     String,
@@ -261,6 +262,17 @@ class Photo(Base):
     ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str] = mapped_column(String(10))
     url: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
+
+
+class MediaFile(Base):
+    """Nội dung ảnh tải lên, lưu trong CSDL để không mất khi máy chủ khởi động lại."""
+
+    __tablename__ = "media_files"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    mime: Mapped[str] = mapped_column(String(40))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
 
 

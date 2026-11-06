@@ -1,12 +1,10 @@
 import os
-import tempfile
 
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://itonsite:itonsite@localhost:5432/itonsite_test")
 os.environ["BACKGROUND_JOBS"] = "false"
 os.environ["GEMINI_API_KEY"] = ""
 os.environ["SMTP_HOST"] = ""
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
-os.environ["MEDIA_DIR"] = tempfile.mkdtemp(prefix="itonsite-media-")
 
 import base64  # noqa: E402
 from datetime import timedelta  # noqa: E402

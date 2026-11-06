@@ -98,7 +98,7 @@ def notify(
                     channel="telegram", recipient=user.telegram_chat_id, subject=title, body=body, reply_markup=buttons, next_attempt_at=now
                 )
             )
-        if email and settings.smtp_host and user.email:
+        if email and settings.email_enabled and user.email:
             db.add(OutboxMessage(channel="email", recipient=user.email, subject=f"[IT OnSite] {title}", body=body, next_attempt_at=now))
 
 

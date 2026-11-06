@@ -200,7 +200,7 @@ def add_work_photos(db: Session, user: User, ticket_id: str, kind: str, photos: 
     if len(ticket.photos_of(kind)) + len(photos) > MAX_WORK_PHOTOS:
         raise ApiError(f"Mỗi loại ảnh tối đa {MAX_WORK_PHOTOS} ảnh.")
     for photo in photos:
-        ticket.photos.append(Photo(kind=kind, url=media.save_image(photo)))
+        ticket.photos.append(Photo(kind=kind, url=media.save_image(db, photo)))
     touch(ticket)
     return ticket
 
@@ -214,7 +214,7 @@ def remove_work_photo(db: Session, user: User, ticket_id: str, kind: str, index:
         raise ApiError("Không tìm thấy ảnh.")
     photo = photos[index]
     ticket.photos.remove(photo)
-    media.delete_image(photo.url)
+    media.delete_image(db, photo.url)
     touch(ticket)
     return ticket
 
