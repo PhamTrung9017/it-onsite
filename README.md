@@ -33,9 +33,9 @@ IT OnSite là ứng dụng web giúp một dịch vụ cài đặt phần mềm,
 | Backend | Python 3.12, FastAPI, SQLAlchemy, Alembic |
 | Cơ sở dữ liệu | PostgreSQL 16 |
 | AI phân loại sự cố | Gemini API |
-| Thông báo | Telegram Bot API, email (SMTP) |
+| Thông báo | Telegram Bot API, email (SMTP hoặc Google Apps Script) |
 | Kiểm thử | Pytest, Vitest, Playwright |
-| Đóng gói, triển khai | Docker, GitHub Actions |
+| Đóng gói, triển khai | Docker, GitHub Actions, Render, Neon |
 
 ## Cấu trúc thư mục
 
@@ -43,11 +43,13 @@ IT OnSite là ứng dụng web giúp một dịch vụ cài đặt phần mềm,
 it-onsite/
 ├── backend/        REST API (FastAPI), xem backend/README.md
 ├── frontend/       Giao diện (React), xem frontend/README.md
-├── infra/          Docker Compose, xem infra/README.md
+├── infra/          Docker Compose, dịch vụ gửi email, xem infra/README.md
 ├── docs/           Tài liệu dự án
 │   ├── srs/        Tài liệu đặc tả yêu cầu phần mềm (SRS), chính sách vận hành
 │   └── quan-ly/    WBS, bảng phân công nhiệm vụ
-└── .github/        Mẫu Issue, mẫu Pull Request, CI
+├── .github/        Mẫu Issue, mẫu Pull Request, CI
+├── Dockerfile      Image chạy toàn bộ hệ thống trên một địa chỉ
+└── render.yaml     Cấu hình triển khai lên Render
 ```
 
 ## Chạy hệ thống
@@ -62,6 +64,8 @@ docker compose exec backend python -m app.seed demo
 ```
 
 Mở http://localhost:8080. Tài khoản dùng thử: `khach@demo.vn`, `ktv@demo.vn`, `dpv@demo.vn`, `qtv@demo.vn`, mật khẩu `123456`.
+
+Bản chạy thật triển khai trên Render (gói miễn phí) với cơ sở dữ liệu ở Neon, xem mục "Triển khai lên Render" trong `infra/README.md`.
 
 Khi phát triển, chạy riêng backend (`backend/README.md`) và frontend (`frontend/README.md`). Mỗi Pull Request được GitHub Actions kiểm tra mã nguồn, chạy kiểm thử backend, frontend và kiểm thử đầu-cuối.
 

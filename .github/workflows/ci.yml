@@ -102,3 +102,43 @@ jobs:
       - name: Kiểm thử đầu-cuối với backend
         working-directory: frontend
         run: npm run test:e2e:backend
+
+  docker:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: itonsite
+          POSTGRES_PASSWORD: itonsite
+          POSTGRES_DB: itonsite
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U itonsite"
+          --health-interval 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dựng image chạy toàn bộ hệ thống (Render)
+        run: docker build --build-arg VITE_DEMO_ACCOUNTS=true -t it-onsite .
+      - name: Chạy image như trên Render
+        run: |
+          docker run -d --name app --network host \
+            -e APP_ENV=production -e PORT=10000 -e DEMO_DATA=true \
+            -e DATABASE_URL=postgresql://itonsite:itonsite@localhost:5432/itonsite \
+            -e JWT_SECRET=$(openssl rand -hex 32) -e CREDENTIAL_KEY=$(openssl rand -hex 32) \
+            it-onsite
+          for i in $(seq 1 60); do curl -fs http://localhost:10000/api/v1/health && break; sleep 2; done
+      - name: Kiểm tra giao diện, API, ảnh trên cùng địa chỉ
+        run: |
+          curl -fs http://localhost:10000/ | grep -q '<div id="root">'
+          curl -fs http://localhost:10000/khach/tao-yeu-cau | grep -q '<div id="root">'
+          curl -fsI http://localhost:10000/ | grep -qi "content-security-policy"
+          curl -fs http://localhost:10000/api/v1/catalog | grep -q '"services"'
+          curl -fsI http://localhost:10000/media/mau.svg | grep -qi "image/svg+xml"
+          curl -fs -X POST http://localhost:10000/api/v1/auth/login -H 'Content-Type: application/json' \
+            -d '{"identifier":"qtv@demo.vn","password":"123456"}' | grep -q accessToken
+      - name: Nhật ký máy chủ
+        if: always()
+        run: docker logs app

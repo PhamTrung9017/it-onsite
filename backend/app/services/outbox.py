@@ -30,6 +30,9 @@ def send_telegram(chat_id: str, title: str, body: str, reply_markup: dict | None
 
 def send_email(to: str, subject: str, body: str) -> None:
     settings = get_settings()
+    if settings.email_relay_url:
+        send_email_relay(to, subject, body)
+        return
     message = EmailMessage()
     message["From"] = settings.smtp_from or settings.smtp_user
     message["To"] = to
@@ -42,6 +45,16 @@ def send_email(to: str, subject: str, body: str) -> None:
         smtp.send_message(message)
 
 
+def send_email_relay(to: str, subject: str, body: str) -> None:
+    """Gửi qua ứng dụng web Google Apps Script (infra/email-relay/Code.gs) bằng HTTPS."""
+    settings = get_settings()
+    payload = {"secret": settings.email_relay_secret, "to": to, "subject": subject, "body": body}
+    response = httpx.post(settings.email_relay_url, json=payload, timeout=20, follow_redirects=True)
+    response.raise_for_status()
+    if response.text.strip() != "OK":
+        raise RuntimeError(f"Dịch vụ gửi email trả lời: {response.text.strip()[:200]}")
+
+
 def _deliver(message: OutboxMessage) -> bool:
     """Trả về False khi kênh chưa được cấu hình."""
     settings = get_settings()
@@ -50,8 +63,8 @@ def _deliver(message: OutboxMessage) -> bool:
             return False
         send_telegram(message.recipient, message.subject, message.body, message.reply_markup)
     elif message.channel == "email":
-        if not settings.smtp_host:
-            logger.info("Email chưa gửi vì chưa cấu hình SMTP – tới %s: %s\n%s", message.recipient, message.subject, message.body)
+        if not settings.email_enabled:
+            logger.info("Email chưa gửi vì chưa cấu hình cách gửi email – tới %s: %s\n%s", message.recipient, message.subject, message.body)
             return False
         send_email(message.recipient, message.subject, message.body)
     return True

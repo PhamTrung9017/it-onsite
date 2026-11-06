@@ -34,8 +34,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
-    volumes:
-      - uploads:/app/uploads
+      EMAIL_RELAY_URL: ${EMAIL_RELAY_URL:-}
+      EMAIL_RELAY_SECRET: ${EMAIL_RELAY_SECRET:-}
     depends_on:
       db:
         condition: service_healthy
@@ -56,4 +56,3 @@ services:
 
 volumes:
   db-data:
-  uploads:

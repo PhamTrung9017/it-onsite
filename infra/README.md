@@ -14,5 +14,15 @@ Giao diện chạy tại http://localhost:8080, API tại http://localhost:8000 
 | Dịch vụ | Ảnh | Dữ liệu lưu ở |
 |---|---|---|
 | `db` | `postgres:16-alpine` | volume `db-data` |
-| `backend` | build từ `backend/Dockerfile` | volume `uploads` (ảnh tải lên) |
+| `backend` | build từ `backend/Dockerfile` | ảnh tải lên lưu trong CSDL (bảng `media_files`) |
 | `frontend` | build từ `frontend/Dockerfile`, nginx phục vụ giao diện và chuyển tiếp `/api`, `/media` tới backend | |
+
+## Triển khai lên Render
+
+`Dockerfile` ở thư mục gốc dựng một image duy nhất: backend phục vụ API, ảnh và bản dựng giao diện trên cùng một địa chỉ (`FRONTEND_DIR`). `render.yaml` mô tả dịch vụ web gói miễn phí ở Singapore, cơ sở dữ liệu PostgreSQL đặt ở Neon.
+
+1. Tạo cơ sở dữ liệu trên Neon, lấy chuỗi kết nối.
+2. Render → New → Blueprint → chọn repo; điền `DATABASE_URL` và các khóa dịch vụ bên ngoài.
+3. Mỗi lần khởi động, máy chủ chạy `alembic upgrade head`, `python -m app.seed auto` (chỉ nạp dữ liệu khi CSDL còn trống) rồi tự đăng ký webhook Telegram với địa chỉ `RENDER_EXTERNAL_URL`.
+
+Gói miễn phí của Render chặn cổng SMTP nên email gửi qua `infra/email-relay/Code.gs` (Google Apps Script, `EMAIL_RELAY_URL`, `EMAIL_RELAY_SECRET`). Dịch vụ tạm ngủ sau 15 phút không có truy cập; lần truy cập kế tiếp mất khoảng một phút để khởi động lại.

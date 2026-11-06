@@ -1,0 +1,36 @@
+# Triển khai lên Render (gói miễn phí) bằng Blueprint: New → Blueprint → chọn repo này.
+# Cơ sở dữ liệu PostgreSQL đặt ở Neon, chuỗi kết nối điền vào DATABASE_URL.
+services:
+  - type: web
+    name: it-onsite
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CREDENTIAL_KEY
+        generateValue: true
+      # true: lần chạy đầu nạp dữ liệu trình diễn và hiện nút đăng nhập nhanh tài khoản dùng thử
+      - key: DEMO_DATA
+        value: "true"
+      - key: VITE_DEMO_ACCOUNTS
+        value: "true"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
+      - key: EMAIL_RELAY_URL
+        sync: false
+      - key: EMAIL_RELAY_SECRET
+        generateValue: true

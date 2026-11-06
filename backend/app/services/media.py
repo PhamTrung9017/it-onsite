@@ -1,13 +1,15 @@
-"""Lưu ảnh tải lên dưới dạng tệp, trả về đường dẫn công khai /media/..."""
+"""Lưu ảnh tải lên trong CSDL, trả về đường dẫn công khai /media/<tên tệp>."""
 
 import base64
 import binascii
 import re
 import uuid
-from pathlib import Path
+
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
+from app.models import MediaFile
 
 DATA_URL_RE = re.compile(r"^data:(image/(?:jpeg|png|webp));base64,(.+)$", re.DOTALL)
 SIGNATURES = {
@@ -19,13 +21,7 @@ EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 MEDIA_PREFIX = "/media/"
 
 
-def media_root() -> Path:
-    root = Path(get_settings().media_dir)
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
-def save_image(data_url: str) -> str:
+def save_image(db: Session, data_url: str) -> str:
     match = DATA_URL_RE.match(data_url or "")
     if not match:
         raise ApiError("Ảnh phải là tệp JPEG, PNG hoặc WebP.")
@@ -38,13 +34,21 @@ def save_image(data_url: str) -> str:
         raise ApiError("Ảnh quá lớn, vui lòng chọn ảnh nhỏ hơn.")
     if not raw.startswith(SIGNATURES[mime]):
         raise ApiError("Tệp tải lên không phải ảnh hợp lệ.")
-    name = f"{uuid.uuid4().hex}.{EXTENSIONS[mime]}"
-    (media_root() / name).write_bytes(raw)
+    return store(db, f"{uuid.uuid4().hex}.{EXTENSIONS[mime]}", mime, raw)
+
+
+def store(db: Session, name: str, mime: str, raw: bytes) -> str:
+    db.merge(MediaFile(name=name, mime=mime, data=raw))
     return MEDIA_PREFIX + name
 
 
-def delete_image(url: str) -> None:
+def delete_image(db: Session, url: str) -> None:
     if not url.startswith(MEDIA_PREFIX):
         return
-    path = media_root() / Path(url[len(MEDIA_PREFIX) :]).name
-    path.unlink(missing_ok=True)
+    file = db.get(MediaFile, url[len(MEDIA_PREFIX) :])
+    if file:
+        db.delete(file)
+
+
+def load(db: Session, name: str) -> MediaFile | None:
+    return db.get(MediaFile, name)
