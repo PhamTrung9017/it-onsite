@@ -118,3 +118,26 @@ def test_unlinked_or_invalid_button(bot, ktv):
     link(bot, ktv, KTV_CHAT)
     press(bot, KTV_CHAT, "tc:YC-1:9")
     assert bot.calls[-1][1]["text"] == "Thao tác không hợp lệ."
+
+
+def test_start_without_valid_code_explains_how_to_link(bot):
+    private = {"chat": {"id": 555, "type": "private"}, "from": {"id": 555}}
+    bot({"message": {**private, "text": "/start"}})
+    assert 'bấm "Kết nối Telegram"' in bot.calls[-1][1]["text"]
+    bot({"message": {**private, "text": "/start ma-sai"}})
+    assert bot.calls[-1][1]["text"].startswith("Mã liên kết không hợp lệ")
+    group = {"chat": {"id": int(GROUP_CHAT), "type": "group"}, "from": {"id": 555}, "text": "/start"}
+    count = len(bot.calls)
+    bot({"message": group})
+    assert len(bot.calls) == count, "trong nhóm không trả lời /start"
+
+
+def test_one_telegram_account_links_to_one_user(bot, ktv, qtv):
+    link(bot, qtv, ADMIN_CHAT)
+    link(bot, ktv, ADMIN_CHAT)
+    reply = bot.calls[-1][1]["text"]
+    assert reply.startswith("Đã liên kết Telegram") and "không còn nhận thông báo" in reply
+    assert ktv.ok("get", "/auth/me")["telegramLinked"] is True
+    assert qtv.ok("get", "/auth/me")["telegramLinked"] is False
+    actions = [row["action"] for row in qtv.ok("get", "/admin/audit")]
+    assert "GO_LIEN_KET_TELEGRAM" in actions
