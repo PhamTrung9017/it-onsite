@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       restore:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: khoiphuc
           POSTGRES_PASSWORD: khoiphuc
@@ -40,20 +40,20 @@ jobs:
       - name: Sao lưu
         if: steps.check.outputs.ready == 'true'
         run: |
-          docker run --rm -e DATABASE_URL postgres:17-alpine \
+          docker run --rm -e DATABASE_URL postgres:18-alpine \
             sh -c 'pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges' > itonsite.dump
           ls -l itonsite.dump
 
       - name: Khôi phục thử vào CSDL tạm
         if: steps.check.outputs.ready == 'true'
         run: |
-          docker run --rm --network host -v "$PWD:/sao-luu" postgres:17-alpine \
+          docker run --rm --network host -v "$PWD:/sao-luu" postgres:18-alpine \
             pg_restore --no-owner --no-privileges --exit-on-error -d "$RESTORE_URL" /sao-luu/itonsite.dump
-          docker run --rm --network host postgres:17-alpine psql "$RESTORE_URL" -At -c \
+          docker run --rm --network host postgres:18-alpine psql "$RESTORE_URL" -At -c \
             "SELECT 'Phiên bản CSDL: ' || version_num FROM alembic_version;
              SELECT 'Tài khoản: ' || count(*) FROM users;
              SELECT 'Phiếu yêu cầu: ' || count(*) FROM tickets;"
-          test "$(docker run --rm --network host postgres:17-alpine psql "$RESTORE_URL" -At -c 'SELECT count(*) FROM users')" -gt 0
+          test "$(docker run --rm --network host postgres:18-alpine psql "$RESTORE_URL" -At -c 'SELECT count(*) FROM users')" -gt 0
 
       - name: Mã hóa
         if: steps.check.outputs.ready == 'true'
