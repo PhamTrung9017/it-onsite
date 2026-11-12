@@ -43,7 +43,7 @@ class User(Base):
     locked: Mapped[bool] = mapped_column(Boolean, default=False)
     address: Mapped[str] = mapped_column(String(255), default="")
     ward: Mapped[str] = mapped_column(String(80), default="")
-    telegram_chat_id: Mapped[str | None] = mapped_column(String(40))
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(40), unique=True)
     telegram_link_code: Mapped[str | None] = mapped_column(String(40), unique=True)
     failed_logins: Mapped[int] = mapped_column(SmallInteger, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(Timestamp)

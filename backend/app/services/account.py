@@ -153,11 +153,17 @@ def telegram_link(db: Session, user: User) -> dict:
     return {"url": f"https://t.me/{settings.telegram_bot_username}?start={user.telegram_link_code}"}
 
 
-def bind_telegram(db: Session, code: str, chat_id: str) -> User | None:
+def bind_telegram(db: Session, code: str, chat_id: str) -> tuple[User, User | None] | None:
+    """Mỗi tài khoản Telegram ứng với một tài khoản IT OnSite: liên kết tài khoản mới thì gỡ liên kết của tài khoản cũ."""
     user = db.scalar(select(User).where(User.telegram_link_code == code))
     if user is None:
         return None
+    previous = db.scalar(select(User).where(User.telegram_chat_id == chat_id, User.id != user.id))
+    if previous is not None:
+        previous.telegram_chat_id = None
+        audit(db, previous, "GO_LIEN_KET_TELEGRAM", str(previous.id), f"Telegram chuyển sang tài khoản {user.name}")
+        db.flush()
     user.telegram_chat_id = chat_id
     user.telegram_link_code = None
     audit(db, user, "LIEN_KET_TELEGRAM", str(user.id))
-    return user
+    return user, previous
