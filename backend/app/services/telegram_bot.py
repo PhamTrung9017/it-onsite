@@ -10,6 +10,11 @@ from app.services import account, technician, telegram
 from app.services.common import audit, utcnow
 
 GROUP_COMMAND = "/ketnoinhom"
+START_GUIDE = (
+    "Chào bạn, đây là bot thông báo của IT OnSite.\n"
+    'Để nhận thông báo: đăng nhập IT OnSite, bấm "Kết nối Telegram" (trang Thông báo hoặc Hồ sơ), '
+    "rồi bấm Start trong cửa sổ Telegram vừa mở."
+)
 
 
 def handle_update(db: Session, update: dict) -> None:
@@ -33,10 +38,17 @@ def _handle_message(db: Session, message: dict) -> None:
     chat_id = str(chat.get("id", ""))
     if not chat_id:
         return
-    if text.startswith("/start ") and chat.get("type", "private") == "private":
-        user = account.bind_telegram(db, text.split(maxsplit=1)[1], chat_id)
-        if user:
-            _reply(chat_id, f"Đã liên kết Telegram với tài khoản IT OnSite của {user.name}.")
+    private = chat.get("type", "private") == "private"
+    if text.startswith("/start ") and private:
+        bound = account.bind_telegram(db, text.split(maxsplit=1)[1], chat_id)
+        if bound:
+            user, previous = bound
+            note = f"\nTài khoản {previous.name} không còn nhận thông báo qua Telegram này." if previous else ""
+            _reply(chat_id, f"Đã liên kết Telegram với tài khoản IT OnSite của {user.name}.{note}")
+        else:
+            _reply(chat_id, "Mã liên kết không hợp lệ hoặc đã hết hạn.\n" + START_GUIDE)
+    elif text == "/start" and private:
+        _reply(chat_id, START_GUIDE)
     elif text.split("@")[0] == GROUP_COMMAND and chat.get("type") in ("group", "supergroup"):
         _connect_group(db, message, chat_id)
 
