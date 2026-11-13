@@ -397,7 +397,7 @@ export function SystemStatusPage() {
       <div className="stack">
         {problems > 0
           ? <Alert tone="warning" title={`${problems} mục cần xem lại`}>Xem chi tiết từng mục bên dưới.</Alert>
-          : <Alert tone="info" title="Không có mục nào lỗi">Các mục chưa bật không ảnh hưởng tới nghiệp vụ chính.</Alert>}
+          : <Alert tone="info" title="Không có mục nào lỗi">{data.checks.some((c) => c.state === 'off') ? 'Các mục chưa bật không ảnh hưởng tới nghiệp vụ chính.' : 'Tất cả thành phần đang hoạt động tốt.'}</Alert>}
         <Card bodyClass="table-wrap">
           <table className="table">
             <thead><tr><th>Thành phần</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead>
