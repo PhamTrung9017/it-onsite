@@ -18,6 +18,7 @@ from app.core.config import get_settings  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.seed import load_demo  # noqa: E402
+from app.services import telegram
 from app.services.common import utcnow  # noqa: E402
 
 PNG = (
@@ -110,3 +111,23 @@ def qtv(client):
 def tomorrow_at(hour: int, minute: int = 0) -> str:
     local = (utcnow() + timedelta(days=1)).astimezone(get_settings().tz)
     return local.replace(hour=hour, minute=minute, second=0, microsecond=0).isoformat()
+
+
+TELEGRAM_SECRET = "bi-mat"
+
+
+@pytest.fixture
+def bot(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "telegram_bot_token", "token")
+    monkeypatch.setattr(settings, "telegram_bot_username", "itonsite_bot")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", TELEGRAM_SECRET)
+    calls = []
+    monkeypatch.setattr(telegram, "call", lambda method, payload: calls.append((method, payload)))
+
+    def send(update: dict) -> None:
+        response = client.post("/api/v1/telegram/webhook", json=update, headers={"X-Telegram-Bot-Api-Secret-Token": TELEGRAM_SECRET})
+        assert response.status_code == 200, response.text
+
+    send.calls = calls
+    return send
