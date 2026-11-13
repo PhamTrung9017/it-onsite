@@ -3,7 +3,7 @@ import { loginAs, resetData, trackErrors } from './helpers.js';
 
 /** Mọi màn hình phải hiển thị không lỗi JavaScript và không tràn ngang trên cả máy tính lẫn điện thoại. */
 const SCREENS = [
-  { role: null, paths: ['/', '/bang-gia', '/dang-nhap', '/dang-ky', '/quen-mat-khau', '/khong-ton-tai'] },
+  { role: null, paths: ['/', '/bang-gia', '/dat-lich', '/tra-cuu', '/dang-nhap', '/dang-ky', '/quen-mat-khau', '/khong-ton-tai'] },
   { role: 'khach@demo.vn', paths: ['/khach/phieu', '/khach/tao-yeu-cau', '/khach/bao-hanh', '/khach/ho-so', '/khach/thong-bao'] },
   { role: 'ktv@demo.vn', paths: ['/ktv/lich-viec', '/ktv/ho-so', '/ktv/thong-bao'] },
   { role: 'dpv@demo.vn', paths: ['/dieu-phoi', '/dieu-phoi/thanh-toan', '/dieu-phoi/bao-hanh', '/dieu-phoi/thong-bao'] },

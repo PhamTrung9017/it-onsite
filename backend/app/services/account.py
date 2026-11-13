@@ -128,17 +128,25 @@ def request_data_deletion(db: Session, user: User, reason: str) -> None:
     audit(db, user, "YEU_CAU_XOA_DU_LIEU", str(user.id), reason.strip())
 
 
+def _mine(user: User) -> list:
+    """Thông báo của người dùng; phiên tra cứu đơn chỉ thấy thông báo của đơn đó."""
+    conditions = [Notification.user_id == user.id]
+    if user.scope_ticket:
+        conditions.append(Notification.ticket_id == user.scope_ticket)
+    return conditions
+
+
 def list_notifications(db: Session, user: User, limit: int, offset: int) -> tuple[list[Notification], int]:
-    query = select(Notification).where(Notification.user_id == user.id).order_by(Notification.created_at.desc(), Notification.id.desc())
+    query = select(Notification).where(*_mine(user)).order_by(Notification.created_at.desc(), Notification.id.desc())
     return page_of(db, query, limit, offset)
 
 
 def unread_count(db: Session, user: User) -> int:
-    return db.scalar(select(func.count()).select_from(Notification).where(Notification.user_id == user.id, Notification.read.is_(False)))
+    return db.scalar(select(func.count()).select_from(Notification).where(*_mine(user), Notification.read.is_(False)))
 
 
 def mark_read(db: Session, user: User, ids: list[int] | None) -> None:
-    query = update(Notification).where(Notification.user_id == user.id, Notification.read.is_(False))
+    query = update(Notification).where(*_mine(user), Notification.read.is_(False))
     if ids:
         query = query.where(Notification.id.in_(ids))
     db.execute(query.values(read=True))

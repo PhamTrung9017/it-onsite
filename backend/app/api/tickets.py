@@ -56,9 +56,13 @@ def warranty_json(warranty, status: dict) -> dict:
 async def classify(body: ClassifyBody, user: CurrentUser, db: Db) -> dict:
     """UC05: gợi ý loại sự cố; giá gợi ý luôn lấy từ bảng giá (BR-09)."""
     require_roles(user, "KHACH")
+    return await classify_issue(db, body.description)
+
+
+async def classify_issue(db, description: str) -> dict:
     config = load_config(db)
     categories = db.scalars(select(Category).order_by(Category.position)).all()
-    result = await ai.classify(body.description, {c.code: c.name for c in categories}, config.ai_confidence_threshold)
+    result = await ai.classify(description, {c.code: c.name for c in categories}, config.ai_confidence_threshold)
     if result["state"] == "failed":
         return result
     category = next(c for c in categories if c.code == result["categoryCode"])

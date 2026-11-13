@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity, BarChart3, Bell, Boxes, CalendarCheck, ClipboardList, Cog, CreditCard, FileClock, Home, LogOut, Menu, PlusCircle,
-  RotateCcw, ShieldCheck, Tags, User, UserCog, Users, Wrench, LayoutGrid, Repeat,
+  RotateCcw, Search, ShieldCheck, Tags, User, UserCog, UserPlus, Users, Wrench, LayoutGrid, Repeat,
 } from 'lucide-react';
 import { ROLE_HOME, ROLE_LABEL, useAuth, useNotifications, useToast } from '../context/AppContext.jsx';
 import { api, usingMockApi } from '../services/api.js';
@@ -17,6 +17,9 @@ export function BrandLogo({ to = '/' }) {
     </Link>
   );
 }
+
+/** Trang đầu của người dùng; phiên tra cứu thì về trang đơn đã tra cứu. */
+export const homeOf = (user, role) => (user?.guestTicket ? `/khach/phieu/${user.guestTicket}` : ROLE_HOME[role]);
 
 function ScrollTop() {
   const { pathname } = useLocation();
@@ -52,7 +55,7 @@ function UserMenu() {
         <div className="menu" role="menu">
           <div style={{ padding: '8px 12px 10px' }}>
             <div className="strong">{user.name}</div>
-            <div className="tiny muted">{user.email || user.phone} · {ROLE_LABEL[role]}</div>
+            <div className="tiny muted">{user.email || user.phone} · {user.guestTicket ? `Tra cứu đơn ${user.guestTicket}` : ROLE_LABEL[role]}</div>
           </div>
           {user.roles.length > 1 && (
             <>
@@ -67,7 +70,7 @@ function UserMenu() {
           )}
           <div className="sep" />
           {usingMockApi && <button type="button" className="mi" role="menuitem" onClick={reset}><RotateCcw aria-hidden />Khôi phục dữ liệu mẫu</button>}
-          <button type="button" className="mi" role="menuitem" onClick={async () => { await logout(); navigate('/'); }}><LogOut aria-hidden />Đăng xuất</button>
+          <button type="button" className="mi" role="menuitem" onClick={async () => { await logout(); navigate('/'); }}><LogOut aria-hidden />{user.guestTicket ? 'Kết thúc tra cứu' : 'Đăng xuất'}</button>
         </div>
       )}
     </div>
@@ -101,11 +104,12 @@ export function PublicLayout() {
           </nav>
           <div className="topbar-actions">
             {user ? (
-              <Link to={ROLE_HOME[role]} className="btn btn-primary btn-sm">Vào trang của tôi</Link>
+              <Link to={homeOf(user, role)} className="btn btn-primary btn-sm">{user.guestTicket ? `Xem đơn ${user.guestTicket}` : 'Vào trang của tôi'}</Link>
             ) : (
               <>
+                <Link to="/tra-cuu" className="btn btn-ghost btn-sm">Tra cứu đơn</Link>
                 <Link to="/dang-nhap" className="btn btn-ghost btn-sm">Đăng nhập</Link>
-                <Link to="/khach/tao-yeu-cau" className="btn btn-accent btn-sm">Đặt lịch</Link>
+                <Link to="/dat-lich" className="btn btn-accent btn-sm">Đặt lịch</Link>
               </>
             )}
           </div>
@@ -121,7 +125,8 @@ export function PublicLayout() {
           <div className="stack-sm">
             <strong style={{ color: 'var(--ink)' }}>Dịch vụ</strong>
             <Link to="/bang-gia">Bảng giá</Link>
-            <Link to="/khach/tao-yeu-cau">Đặt lịch hỗ trợ</Link>
+            <Link to="/dat-lich">Đặt lịch hỗ trợ</Link>
+            <Link to="/tra-cuu">Tra cứu đơn</Link>
             <Link to="/khach/bao-hanh">Tra cứu bảo hành</Link>
           </div>
           <div className="stack-sm">
@@ -147,7 +152,14 @@ export function RequireRole({ role: needed }) {
   if (!ready) return <div className="container app-main"><Loading /></div>;
   if (!user) return <Navigate to="/dang-nhap" replace state={{ from: location.pathname }} />;
   if (!user.roles.includes(needed)) return <Navigate to={ROLE_HOME[user.roles[0]]} replace />;
+  if (user.guestTicket && !guestAllowed(location.pathname, user.guestTicket)) return <Navigate to={homeOf(user)} replace />;
   return <Outlet />;
+}
+
+/** Phiên tra cứu chỉ mở trang của đơn đã tra cứu, bảo hành và thông báo của đơn đó. */
+function guestAllowed(path, ticket) {
+  const own = `/khach/phieu/${ticket}`;
+  return path === own || path.startsWith(`${own}/`) || path === '/khach/bao-hanh' || path === '/khach/thong-bao';
 }
 
 /* ---------------- Khách hàng, kỹ thuật viên: điện thoại trước ---------------- */
@@ -166,8 +178,16 @@ const NAV = {
   ],
 };
 
+const guestNav = (ticket) => [
+  { to: `/khach/phieu/${ticket}`, label: `Đơn ${ticket}`, short: 'Đơn', icon: ClipboardList },
+  { to: '/khach/bao-hanh', label: 'Bảo hành', short: 'Bảo hành', icon: ShieldCheck },
+  { to: '/tra-cuu', label: 'Tra cứu đơn khác', short: 'Tra cứu', icon: Search },
+  { to: '/dang-ky', label: 'Tạo tài khoản', short: 'Tài khoản', icon: UserPlus },
+];
+
 export function MobileAppLayout({ role }) {
-  const items = NAV[role];
+  const { user } = useAuth();
+  const items = role === 'KHACH' && user?.guestTicket ? guestNav(user.guestTicket) : NAV[role];
   const { unread } = useNotifications();
   const base = role === 'KHACH' ? '/khach' : '/ktv';
   return (

@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import text
 
-from app.api import account, admin, auth, catalog, dispatch, technician, tickets
+from app.api import account, admin, auth, catalog, dispatch, guest, technician, tickets
 from app.api.deps import Db
 from app.core.config import get_settings
 from app.core.errors import ApiError
@@ -93,7 +93,7 @@ def jsonable_errors(exc: RequestValidationError) -> list[dict]:
     return [{"field": ".".join(str(p) for p in err.get("loc", [])), "message": err.get("msg", "")} for err in exc.errors()]
 
 
-for module in (auth, account, catalog, tickets, technician, dispatch, admin):
+for module in (auth, account, catalog, guest, tickets, technician, dispatch, admin):
     app.include_router(module.router, prefix=API_PREFIX)
 
 

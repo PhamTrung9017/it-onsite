@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -49,8 +50,13 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(Timestamp)
     consent_at: Mapped[datetime | None] = mapped_column(Timestamp)
     created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
+    # Khách đặt lịch không tạo tài khoản (tra cứu bằng mã đơn và số điện thoại)
+    is_guest: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     technician: Mapped["Technician | None"] = relationship(back_populates="user")
+
+    # Phiên tra cứu một đơn (mã đơn + số điện thoại): chỉ được thao tác trên đơn này; None với phiên đăng nhập thường
+    scope_ticket = None
 
 
 class RefreshToken(Base):
