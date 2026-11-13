@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # Trên Render, khi không đặt APP_URL thì lấy địa chỉ công khai Render cấp cho dịch vụ.
     app_url: str = Field("http://localhost:5173", validation_alias=AliasChoices("APP_URL", "RENDER_EXTERNAL_URL"))
     cors_origins: list[str] = ["http://localhost:5173"]
+    # Bản trình diễn: cho phép quản trị viên nạp lại dữ liệu mẫu
+    demo_data: bool = False
     # Thư mục bản dựng giao diện (frontend/dist); đặt khi backend phục vụ luôn giao diện trên cùng một địa chỉ.
     frontend_dir: str = ""
     max_image_bytes: int = 3 * 1024 * 1024

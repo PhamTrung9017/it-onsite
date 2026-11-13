@@ -43,7 +43,7 @@ from app.models import (
     Warranty,
 )
 from app.services import media
-from app.services.common import SYSTEM_NAME, money, utcnow
+from app.services.common import SYSTEM_NAME, audit, money, utcnow
 
 MIN = timedelta(minutes=1)
 HOUR = timedelta(hours=1)
@@ -412,7 +412,8 @@ class DemoBuilder:
     def notify(self, user: str, title: str, body: str, ticket_id: str | None, at: datetime) -> None:
         self.db.add(Notification(user_id=self.users[user].id, title=title, body=body, ticket_id=ticket_id, read=False, created_at=at))
 
-    def history_30_days(self) -> None:
+    def past_tickets(self, days: int = 60) -> None:
+        """Phiếu đã xong trong `days` ngày qua, đủ dài để báo cáo so sánh được với kỳ trước."""
         rng = random.Random(20261030)
         categories = ["CAI_HDH", "VIRUS", "MAY_CHAM", "PHAN_MEM", "MANG", "PHAN_CUNG", "NGUON", "CAI_HDH", "VIRUS", "MAY_CHAM"]
         customers = ["kh1", "kh2", "kh3", "kh4", "kh5"]
@@ -420,7 +421,7 @@ class DemoBuilder:
         techs = ["k1", "k2", "k3"]
         dispatcher = self.users["dpv1"].name
         served = 0
-        for day in range(30, 1, -1):
+        for day in range(days, 1, -1):
             for _ in range(rng.randint(1, 3)):
                 cust = rng.choice(customers)
                 category = rng.choice(categories)
@@ -897,9 +898,29 @@ def load_demo(db: Session) -> None:
     media.store(db, "mau.svg", "image/svg+xml", SAMPLE_SVG.encode())
     builder = DemoBuilder(db, catalog, utcnow())
     builder.people()
-    builder.history_30_days()
+    builder.past_tickets()
     builder.live_tickets()
     builder.finish()
+
+
+def reload_demo(db: Session, actor_email: str | None) -> None:
+    """Nạp lại dữ liệu trình diễn (ngày giờ tính theo lúc nạp), giữ liên kết Telegram của các tài khoản mẫu và nhóm Telegram đã kết nối."""
+    linked = db.execute(select(User.email, User.telegram_chat_id).where(User.telegram_chat_id.is_not(None)))
+    links = {email: chat for email, chat in linked if email}
+    row = db.get(Setting, 1)
+    group = BusinessConfig.from_dict(row.data).telegram_group_chat_id if row else ""
+    db.expunge_all()
+    load_demo(db)
+    db.flush()
+    for user in db.scalars(select(User).where(User.email.in_(links))):
+        user.telegram_chat_id = links[user.email]
+    if group:
+        row = db.get(Setting, 1)
+        config = BusinessConfig.from_dict(row.data)
+        config.telegram_group_chat_id = group
+        row.data = config.to_dict()
+    actor = db.scalar(select(User).where(User.email == actor_email)) if actor_email else None
+    audit(db, actor, "NAP_LAI_DU_LIEU_DEMO", "he-thong", "Nạp lại dữ liệu trình diễn")
 
 
 def first_start(db: Session) -> bool:

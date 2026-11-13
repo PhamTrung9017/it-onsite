@@ -72,6 +72,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://itonsite:itonsite@localhost:5432/itonsite
       E2E_RESET_COMMAND: python -m app.seed demo
+      DEMO_DATA: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

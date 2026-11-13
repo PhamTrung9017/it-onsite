@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.config import get_settings
 from app.db import SessionLocal
-from app.models import OutboxMessage
-from tests.conftest import tomorrow_at
+from app.models import OutboxMessage, User
+from tests.conftest import Api, tomorrow_at
 from tests.test_flow import create_ticket, receive
 
 
@@ -193,3 +193,33 @@ def test_long_lists_are_paged(client, khach, dpv, qtv):
     unread = khach.ok("get", "/notifications/unread-count")["count"]
     assert unread == sum(1 for n in khach.ok("get", "/notifications?limit=100") if not n["read"])
     assert int(dpv.get("/warranty-claims?limit=1").headers["x-total-count"]) >= 0
+
+
+def test_reload_demo_data_keeps_telegram_links(client, qtv, khach, ktv, monkeypatch):
+    assert qtv.post("/admin/demo-data/reset").status_code == 403, "chỉ bản trình diễn mới nạp lại được"
+    monkeypatch.setattr(get_settings(), "demo_data", True)
+    assert client.get("/api/v1/catalog").json()["features"]["demoData"] is True
+    assert ktv.post("/admin/demo-data/reset").status_code == 403, "chỉ quản trị viên"
+
+    ticket = create_ticket(khach, "Laptop không vào được mạng Wi-Fi")
+    registered = client.post(
+        "/api/v1/auth/register", json={"name": "Khách thử", "phone": "0912000999", "password": "matkhau123", "consent": True}
+    )
+    assert registered.status_code == 201
+    config = qtv.ok("get", "/admin/overview")["config"]
+    qtv.ok("put", "/admin/config", {**config, "telegramGroupChatId": "-100555"})
+    with SessionLocal() as db:
+        db.execute(update(User).where(User.email.in_(["qtv@demo.vn", "ktv@demo.vn"])).values(telegram_chat_id=User.email))
+        db.commit()
+
+    assert qtv.ok("post", "/admin/demo-data/reset") == {"ok": True}
+
+    assert khach.get(f"/tickets/{ticket['id']}").status_code == 404, "dữ liệu phát sinh bị xóa"
+    assert client.post("/api/v1/auth/login", json={"identifier": "0912000999", "password": "matkhau123"}).status_code == 401
+    again = Api(client, "qtv@demo.vn")
+    assert again.ok("get", "/admin/overview")["config"]["telegramGroupChatId"] == "-100555"
+    assert again.ok("get", "/auth/me")["telegramLinked"] is True
+    assert Api(client, "ktv@demo.vn").ok("get", "/auth/me")["telegramLinked"] is True
+    assert "NAP_LAI_DU_LIEU_DEMO" in [a["action"] for a in again.ok("get", "/admin/audit")]
+    report = again.ok("get", "/admin/reports?days=30")
+    assert report["donePrev"] > 0 and 0.5 < report["done"] / report["donePrev"] < 2, "dữ liệu mẫu đủ 60 ngày để so sánh kỳ trước"

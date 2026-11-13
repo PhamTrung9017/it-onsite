@@ -52,6 +52,7 @@ def catalog(db: Db) -> dict:
         "features": {
             "telegram": bool(settings.telegram_bot_token and settings.telegram_bot_username),
             "telegramBot": settings.telegram_bot_username if settings.telegram_bot_token else "",
+            "demoData": settings.demo_data,
         },
     }
 
