@@ -1,4 +1,5 @@
-"""Tác vụ chạy nền: thu hồi phân công quá hạn (BR-06), hủy phiếu quá hạn trả phí giữ lịch, gửi hàng đợi thông báo (NFR-14)."""
+"""Tác vụ chạy nền: thu hồi phân công quá hạn (BR-06), hủy phiếu quá hạn trả phí giữ lịch, gửi hàng đợi thông báo (NFR-14),
+nhắc kỹ thuật viên trước giờ hẹn, tổng kết cuối ngày."""
 
 import asyncio
 import logging
@@ -12,7 +13,8 @@ from app.services.common import utcnow
 from app.services.deposits import sweep_unpaid
 from app.services.dispatch import sweep_overdue_assignments
 from app.services.outbox import process_outbox
-from app.services.system_status import LAST_RUN
+from app.services.scheduled import send_daily_summary, send_reminders
+from app.services.system_status import LAST_RUN, SCHEDULE_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -40,4 +42,6 @@ def start_background_jobs() -> list[asyncio.Task]:
         asyncio.create_task(_loop(sweep_overdue_assignments, settings.sweep_interval_seconds)),
         asyncio.create_task(_loop(sweep_unpaid, settings.sweep_interval_seconds)),
         asyncio.create_task(_loop(process_outbox, settings.outbox_interval_seconds)),
+        asyncio.create_task(_loop(send_reminders, settings.sweep_interval_seconds)),
+        asyncio.create_task(_loop(send_daily_summary, SCHEDULE_INTERVAL)),
     ]
