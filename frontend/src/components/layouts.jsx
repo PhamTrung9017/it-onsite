@@ -130,7 +130,7 @@ export function PublicLayout() {
             <Link to="/dang-ky">Đăng ký</Link>
           </div>
         </div>
-        <div className="container tiny faint" style={{ marginTop: 24 }}>© {new Date().getFullYear()} IT OnSite · Đồ án thực tế Công nghệ phần mềm – Trường ĐH Giao thông vận tải TP.HCM</div>
+        <div className="container tiny faint" style={{ marginTop: 24 }}>© {new Date().getFullYear()} IT OnSite</div>
       </footer>
     </>
   );
