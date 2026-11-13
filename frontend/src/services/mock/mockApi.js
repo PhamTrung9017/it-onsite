@@ -1094,6 +1094,24 @@ export const mockApi = {
     return { ...page, items: page.items.map(publicUser) };
   }, 140),
 
+  systemStatus: () => respond((db) => {
+    requireRole(db, 'QTV');
+    const off = (key, name) => ({ key, name, state: 'off', detail: 'Bản giả lập không kết nối dịch vụ bên ngoài' });
+    return {
+      checkedAt: new Date().toISOString(),
+      version: '',
+      checks: [
+        { key: 'database', name: 'Cơ sở dữ liệu', state: 'ok', detail: `Dữ liệu giả lập trong trình duyệt, ${db.tickets.length} phiếu` },
+        off('jobs', 'Tác vụ nền'),
+        off('outbox', 'Hàng đợi thông báo'),
+        off('telegram', 'Bot Telegram'),
+        off('group', 'Nhóm Telegram'),
+        off('email', 'Email'),
+        off('ai', 'AI phân loại sự cố'),
+      ],
+    };
+  }, 140),
+
   listAudit: (paging) => respond((db) => {
     requireRole(db, 'QTV');
     return pageOf([...db.audit].reverse(), paging);

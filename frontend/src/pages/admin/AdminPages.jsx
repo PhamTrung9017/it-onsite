@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Plus, RotateCcw, Save, ShieldCheck, X } from 'lucide-react';
+import { Pencil, Plus, RefreshCw, RotateCcw, Save, ShieldCheck, X } from 'lucide-react';
 import { useAction, useLoad, usePaged } from '../../hooks/useApi.js';
 import { api, usingMockApi } from '../../services/api.js';
 import { ROLE_LABEL, useAuth, useToast } from '../../context/AppContext.jsx';
@@ -372,6 +372,44 @@ function DemoDataCard() {
       >
         <p className="small">Toàn bộ dữ liệu hiện có sẽ bị xóa và thay bằng dữ liệu mẫu. Thao tác này không hoàn tác được.</p>
       </Modal>
+    </>
+  );
+}
+
+/* ---------------- Tình trạng hệ thống ---------------- */
+const STATE = { ok: ['success', 'Hoạt động tốt'], warn: ['warning', 'Cần chú ý'], error: ['danger', 'Lỗi'], off: ['muted', 'Chưa bật'] };
+
+export function SystemStatusPage() {
+  const { data, loading, error, reload } = useLoad(() => api.systemStatus(), []);
+  const [checking, setChecking] = useState(false);
+  async function recheck() {
+    setChecking(true);
+    await reload(true);
+    setChecking(false);
+  }
+  if (loading) return <Loading />;
+  if (error) return <ErrorState error={error} onRetry={reload} />;
+  const problems = data.checks.filter((c) => c.state === 'error' || c.state === 'warn').length;
+  const sub = `Kiểm tra lúc ${formatDateTime(data.checkedAt)}${data.version ? ` · bản ${data.version}` : ''}`;
+  return (
+    <>
+      <PageHead title="Tình trạng hệ thống" sub={sub} actions={<Button variant="outline" icon={RefreshCw} loading={checking} onClick={recheck}>Kiểm tra lại</Button>} />
+      <div className="stack">
+        {problems > 0
+          ? <Alert tone="warning" title={`${problems} mục cần xem lại`}>Xem chi tiết từng mục bên dưới.</Alert>
+          : <Alert tone="info" title="Không có mục nào lỗi">Các mục chưa bật không ảnh hưởng tới nghiệp vụ chính.</Alert>}
+        <Card bodyClass="table-wrap">
+          <table className="table">
+            <thead><tr><th>Thành phần</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead>
+            <tbody>
+              {data.checks.map((c) => {
+                const [tone, label] = STATE[c.state];
+                return <tr key={c.key}><td className="nowrap">{c.name}</td><td className="nowrap"><Badge tone={tone}>{label}</Badge></td><td className="small muted">{c.detail}</td></tr>;
+              })}
+            </tbody>
+          </table>
+        </Card>
+      </div>
     </>
   );
 }
