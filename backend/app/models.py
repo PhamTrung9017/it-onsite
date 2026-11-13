@@ -265,6 +265,16 @@ class Photo(Base):
     created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
 
 
+class JobRun(Base):
+    """Đánh dấu tác vụ theo giờ đã chạy (nhắc lịch, tổng kết ngày) để không gửi trùng."""
+
+    __tablename__ = "job_runs"
+
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    period: Mapped[str] = mapped_column(String(120), primary_key=True)
+    ran_at: Mapped[datetime] = mapped_column(Timestamp)
+
+
 class MediaFile(Base):
     """Nội dung ảnh tải lên, lưu trong CSDL để không mất khi máy chủ khởi động lại."""
 
