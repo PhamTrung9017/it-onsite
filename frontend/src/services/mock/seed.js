@@ -192,13 +192,13 @@ export function buildSeed(nowDate = new Date()) {
   let seq = 1;
   const nextId = (t) => ticketId(t, seq++);
 
-  /* --- Lịch sử 30 ngày cho báo cáo --- */
+  /* --- Lịch sử 60 ngày cho báo cáo (đủ để so sánh với kỳ trước) --- */
   const r = rng(20261030);
   const histCats = ['CAI_HDH', 'VIRUS', 'MAY_CHAM', 'PHAN_MEM', 'MANG', 'PHAN_CUNG', 'NGUON', 'CAI_HDH', 'VIRUS', 'MAY_CHAM'];
   const customers = USERS.filter((u) => u.roles.includes('KHACH'));
   const activeTechs = TECHNICIANS.filter((t) => t.active);
   let served = 0;
-  for (let d = 30; d >= 2; d -= 1) {
+  for (let d = 60; d >= 2; d -= 1) {
     const count = 1 + Math.floor(r() * 3);
     for (let k = 0; k < count; k += 1) {
       const cust = customers[Math.floor(r() * customers.length)];
@@ -441,7 +441,7 @@ export function buildSeed(nowDate = new Date()) {
   notifications.push({ id: 'tb-n3', userId: 'u-dpv1', title: 'Phiếu mới cần tiếp nhận', body: 'Có 2 phiếu mới đang chờ tiếp nhận trên bảng điều phối.', ticketId: null, read: false, createdAt: iso(now - 12 * MIN) });
 
   return {
-    version: 2,
+    version: 3,
     config: structuredClone(DEFAULT_CONFIG),
     users: USERS.map(withAccount),
     technicians,

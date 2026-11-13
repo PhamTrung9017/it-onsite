@@ -7,6 +7,7 @@ from datetime import timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app import seed
 from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, not_found
 from app.core.security import hash_password, new_opaque_token, token_digest
@@ -328,3 +329,11 @@ def save_config(db: Session, admin: User, data: dict) -> BusinessConfig:
     row.data = config.to_dict()
     audit(db, admin, "CAU_HINH", "tham số nghiệp vụ", change)
     return config
+
+
+def reload_demo_data(db: Session, user: User) -> None:
+    """Chỉ bản trình diễn (DEMO_DATA=true): quản trị viên nạp lại dữ liệu mẫu, xóa mọi dữ liệu hiện có."""
+    require_roles(user, "QTV")
+    if not get_settings().demo_data:
+        raise ApiError("Chỉ bản trình diễn mới nạp lại được dữ liệu mẫu.", 403)
+    seed.reload_demo(db, user.email)

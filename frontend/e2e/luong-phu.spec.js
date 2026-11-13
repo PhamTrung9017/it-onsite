@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import {
-  claimStatus, expectStatus, getTicket, loginAs, myTickets, notificationsOf, resetData, tomorrowInput, trackErrors, warrantiesOf,
+  BACKEND, claimStatus, expectStatus, getTicket, loginAs, myTickets, notificationsOf, resetData, tomorrowInput, trackErrors, warrantiesOf,
 } from './helpers.js';
 
 const PHOTO = new URL('./fixtures/anh-sau.jpg', import.meta.url).pathname;
@@ -353,5 +353,24 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
 
     await page.goto('/quan-tri/nhat-ky');
     await expect(page.getByText('CAU_HINH').first()).toBeVisible();
+  });
+
+  test('Quản trị viên nạp lại dữ liệu trình diễn', async ({ page }) => {
+    await loginAs(page, 'qtv@demo.vn');
+    await page.goto('/quan-tri/cau-hinh');
+    await page.fill('#surveyFee', '60000');
+    await page.getByRole('button', { name: 'Lưu cấu hình' }).click();
+    await expect(page.getByText('Đã lưu cấu hình.')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Nạp lại dữ liệu trình diễn' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Xóa và nạp lại' }).click();
+    if (BACKEND) {
+      await page.waitForURL('**/dang-nhap');
+      await expect(page.getByText('Đã nạp lại dữ liệu trình diễn. Vui lòng đăng nhập lại.')).toBeVisible();
+    } else {
+      await page.waitForLoadState('load');
+    }
+    await page.goto('/bang-gia');
+    await expect(page.getByText('50.000đ').first()).toBeVisible();
   });
 });

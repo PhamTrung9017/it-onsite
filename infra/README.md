@@ -25,7 +25,7 @@ Giao diện chạy tại http://localhost:8080, API tại http://localhost:8000 
 2. Render → New → Blueprint → chọn repo; điền `DATABASE_URL` và các khóa dịch vụ bên ngoài.
 3. Mỗi lần khởi động, máy chủ chạy `alembic upgrade head`, `python -m app.seed auto` (chỉ nạp dữ liệu khi CSDL còn trống) rồi tự đăng ký webhook Telegram với địa chỉ `RENDER_EXTERNAL_URL`.
 
-Mỗi lần code gộp vào `main`, workflow `.github/workflows/deploy.yml` gọi Deploy Hook của dịch vụ (secret `RENDER_DEPLOY_HOOK`) để Render dựng bản mới.
+Render tự dựng và chạy bản mới mỗi khi `main` có commit mới.
 
 Gói miễn phí của Render chặn cổng SMTP nên email gửi qua `infra/email-relay/Code.gs` (Google Apps Script, `EMAIL_RELAY_URL`, `EMAIL_RELAY_SECRET`). Dịch vụ tạm ngủ sau 15 phút không có truy cập; lần truy cập kế tiếp mất khoảng một phút để khởi động lại.
 

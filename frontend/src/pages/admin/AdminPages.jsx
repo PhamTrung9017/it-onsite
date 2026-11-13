@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Plus, Save, ShieldCheck, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Pencil, Plus, RotateCcw, Save, ShieldCheck, X } from 'lucide-react';
 import { useAction, useLoad, usePaged } from '../../hooks/useApi.js';
-import { api } from '../../services/api.js';
-import { ROLE_LABEL, useAuth } from '../../context/AppContext.jsx';
+import { api, usingMockApi } from '../../services/api.js';
+import { ROLE_LABEL, useAuth, useToast } from '../../context/AppContext.jsx';
 import { Alert, Badge, Button, Card, ErrorState, Field, LoadMore, Loading, Modal, Money, PageHead, Stars } from '../../components/ui.jsx';
 import { WEEKDAY_LABEL, formatDate, formatDateTime, formatSchedule, toDateInput } from '../../lib/format.js';
 import { DEFAULT_SCHEDULE } from '../../lib/rules.js';
@@ -300,6 +301,7 @@ export function ConfigPage() {
         <TelegramGroupCard config={cfg} onDisconnect={async () => {
           if (await run('tg', () => api.saveConfig({ ...cfg, telegramGroupChatId: '' }), 'Đã ngắt kết nối nhóm Telegram.')) reload(true);
         }} busy={busy === 'tg'} />
+        <DemoDataCard />
       </div>
     </>
   );
@@ -325,6 +327,52 @@ function TelegramGroupCard({ config, onDisconnect, busy }) {
         </div>
       )}
     </Card>
+  );
+}
+
+/** Bản trình diễn: nạp lại dữ liệu mẫu để ngày giờ khớp với hôm trình bày. */
+function DemoDataCard() {
+  const { data } = useLoad(() => api.getCatalog(), []);
+  const { logout } = useAuth();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!usingMockApi && !data?.features?.demoData) return null;
+  async function reset() {
+    setBusy(true);
+    try {
+      await api.resetDemoData();
+    } catch (e) {
+      setBusy(false);
+      toast.error(e.message);
+      return;
+    }
+    if (usingMockApi) {
+      window.location.reload();
+      return;
+    }
+    await logout();
+    toast.success('Đã nạp lại dữ liệu trình diễn. Vui lòng đăng nhập lại.');
+    navigate('/dang-nhap');
+  }
+  return (
+    <>
+      <Card title="Dữ liệu trình diễn">
+        <div className="stack-sm">
+          <p className="small muted">Xóa toàn bộ phiếu, tài khoản và dữ liệu phát sinh, nạp lại dữ liệu mẫu với ngày giờ tính từ lúc nạp. Liên kết Telegram của các tài khoản mẫu và nhóm Telegram đã kết nối được giữ nguyên.</p>
+          <div><Button variant="danger" size="sm" icon={RotateCcw} onClick={() => setOpen(true)}>Nạp lại dữ liệu trình diễn</Button></div>
+        </div>
+      </Card>
+      <Modal
+        open={open}
+        title="Nạp lại dữ liệu trình diễn"
+        onClose={() => !busy && setOpen(false)}
+        footer={<><Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>Hủy</Button><Button variant="danger-solid" loading={busy} onClick={reset}>Xóa và nạp lại</Button></>}
+      >
+        <p className="small">Toàn bộ dữ liệu hiện có sẽ bị xóa và thay bằng dữ liệu mẫu. Thao tác này không hoàn tác được.</p>
+      </Modal>
+    </>
   );
 }
 
