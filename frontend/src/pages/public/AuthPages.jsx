@@ -28,7 +28,7 @@ function AuthShell({ children }) {
             ))}
           </ul>
         </div>
-        <p className="small" style={{ opacity: 0.7 }}>Đồ án thực tế Công nghệ phần mềm – Trường ĐH Giao thông vận tải TP.HCM</p>
+        <p className="small" style={{ opacity: 0.7 }}>© {new Date().getFullYear()} IT OnSite</p>
       </aside>
       <main className="auth-main"><div className="auth-card stack-lg">{children}</div></main>
     </div>
