@@ -14,7 +14,7 @@ export default function PricingPage() {
           <h1>Bảng giá dịch vụ</h1>
           <p className="sub">Giá phần công tham khảo. Giá chính thức là báo giá kỹ thuật viên gửi sau khi khảo sát, bạn duyệt rồi mới thực hiện.</p>
         </div>
-        <ButtonLink to="/khach/tao-yeu-cau" variant="accent" icon={CalendarClock}>Đặt lịch hỗ trợ</ButtonLink>
+        <ButtonLink to="/dat-lich" variant="accent" icon={CalendarClock}>Đặt lịch hỗ trợ</ButtonLink>
       </div>
       {loading && <Loading />}
       {error && <ErrorState error={error} onRetry={reload} />}

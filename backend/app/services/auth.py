@@ -73,18 +73,18 @@ def register(db: Session, name: str, email: str, phone: str, password: str, cons
     email = validate_email(email) if email.strip() else None
     phone = validate_phone(phone)
     validate_new_password(password)
-    if email_taken(db, email, phone):
+    guest = db.scalar(select(User).where(User.phone == phone, User.is_guest.is_(True)))
+    email_owner = db.scalar(select(User).where(func.lower(User.email) == email.lower())) if email else None
+    if (guest is None and email_taken(db, None, phone)) or (email_owner is not None and email_owner is not guest):
         raise conflict("Email hoặc số điện thoại đã được đăng ký." if email else "Số điện thoại đã được đăng ký.")
     now = utcnow()
-    user = User(
-        name=name.strip(),
-        email=email,
-        phone=phone,
-        password_hash=hash_password(password),
-        roles=["KHACH"],
-        consent_at=now,
-        created_at=now,
-    )
+    # Khách từng đặt nhanh bằng số điện thoại này: hồ sơ thành tài khoản, giữ các đơn đã đặt
+    user = guest or User(phone=phone, roles=["KHACH"], created_at=now)
+    user.name = name.strip()
+    user.email = email or user.email
+    user.password_hash = hash_password(password)
+    user.is_guest = False
+    user.consent_at = now
     db.add(user)
     db.flush()
     audit(db, user, "DANG_KY", str(user.id))
@@ -203,6 +203,7 @@ def reset_password(db: Session, token: str, password: str) -> None:
         raise ApiError("Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.")
     user = db.get(User, row.user_id)
     user.password_hash = hash_password(password)
+    user.is_guest = False
     user.failed_logins = 0
     user.locked_until = None
     row.used = True

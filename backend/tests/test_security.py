@@ -16,6 +16,10 @@ PUBLIC = {
     ("post", "/api/v1/auth/reset-password"),
     ("get", "/api/v1/catalog"),
     ("get", "/api/v1/health"),
+    # Khách không cần tài khoản (có giới hạn số lần theo IP)
+    ("post", "/api/v1/guest/classify"),
+    ("post", "/api/v1/guest/tickets"),
+    ("post", "/api/v1/guest/lookup"),
 }
 SECRET_KEYS = {
     "password",

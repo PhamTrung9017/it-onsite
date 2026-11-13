@@ -81,13 +81,25 @@ function currentUser(db) {
   return user;
 }
 
+/** Phiên tra cứu bằng mã đơn và số điện thoại: chỉ thao tác trên đơn đó. */
+const sessionTicket = () => readSession()?.ticket || null;
+
+const mineNote = (n, user) => n.userId === user.id && (!sessionTicket() || n.ticketId === sessionTicket());
+
+function startSession(user, ticket = null) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id, ticket, at: nowIso() }));
+}
+
 function requireRole(db, ...roles) {
   const user = currentUser(db);
   if (!roles.some((r) => user.roles.includes(r))) throw new ApiError('Bạn không có quyền thực hiện thao tác này.', 403);
   return user;
 }
 
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, phone: u.phone, roles: u.roles, address: u.address || '', ward: u.ward || '', locked: u.locked });
+const publicUser = (u) => ({
+  id: u.id, name: u.name, email: u.email, phone: u.phone, roles: u.roles, address: u.address || '', ward: u.ward || '', locked: u.locked,
+  isGuest: Boolean(u.isGuest), guestTicket: sessionTicket(),
+});
 
 /* ---------- Tiện ích nghiệp vụ ---------- */
 
@@ -351,6 +363,34 @@ const workDoneAt = (t) => t.history.filter((h) => h.status === STATUS.CHO_NGHIEM
 
 /* ---------- API ---------- */
 
+/** Tạo phiếu cho khách: dùng chung cho khách có tài khoản và khách đặt nhanh. */
+function checkTicketFields(db, data) {
+  if ((data.description || '').trim().length < 10) throw new ApiError('Mô tả sự cố cần ít nhất 10 ký tự.');
+  if (!data.address?.trim() || !data.ward) throw new ApiError('Vui lòng nhập địa chỉ và chọn phường.');
+  if (!db.config.areas.includes(data.ward)) throw new ApiError('Phường này hiện chưa nằm trong khu vực phục vụ.');
+  const slotError = validateSlot(data.slotStart, db.config);
+  if (slotError) throw new ApiError(slotError);
+  if (!data.acceptTerms || !data.acceptPrivacy) throw new ApiError('Bạn cần đồng ý điều khoản dịch vụ và xử lý dữ liệu cá nhân.');
+  if ((data.photos || []).length > 5) throw new ApiError('Mỗi yêu cầu đính kèm tối đa 5 ảnh.');
+}
+
+function createTicketFor(db, user, data) {
+  if (!data.deviceId || !db.devices.some((d) => d.id === data.deviceId && d.customerId === user.id)) throw new ApiError('Vui lòng chọn thiết bị.');
+  checkTicketFields(db, data);
+  const t = createTicketRecord(db, {
+    ...data,
+    customerId: user.id,
+    contactPhone: user.phone,
+    actorName: user.name,
+    categoryCode: data.categoryCode || data.aiResult?.categoryCode || 'KHAC',
+    urgency: data.aiResult?.urgency || 'TRUNG_BINH',
+  });
+  audit(db, user, 'TAO_PHIEU', t.id);
+  notify(db, dispatcherIds(db), 'Phiếu mới cần tiếp nhận', `${user.name} vừa gửi phiếu ${t.id}.`, t.id);
+  notify(db, [user.id], 'Đã nhận yêu cầu', `Phiếu ${t.id} đã được ghi nhận. Vui lòng chuyển phí giữ lịch ${money(db.config.surveyFee)} trong ${db.config.depositMinutes} phút để cửa hàng tiếp nhận.`, t.id);
+  return enrichTicket(db, t, user);
+}
+
 export const mockApi = {
   /* ---------- Hệ thống ---------- */
   resetDemoData: () => respond(() => {
@@ -363,7 +403,7 @@ export const mockApi = {
     const user = db.users.find((u) => u.email?.toLowerCase() === id || u.phone === id.replace(/\s/g, ''));
     if (!user || user.password !== password) throw new ApiError('Email/số điện thoại hoặc mật khẩu không đúng.', 401);
     if (user.locked) throw new ApiError('Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.', 403);
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id, at: nowIso() }));
+    startSession(user);
     audit(db, user, 'DANG_NHAP', user.id);
     return publicUser(user);
   }, 350),
@@ -383,12 +423,15 @@ export const mockApi = {
     if (email && !EMAIL_RE.test(email)) throw new ApiError('Email không hợp lệ.');
     if (!/^0\d{9}$/.test(phone)) throw new ApiError('Số điện thoại gồm 10 chữ số, bắt đầu bằng 0.');
     if (password.length < 8) throw new ApiError('Mật khẩu cần ít nhất 8 ký tự.');
-    if (db.users.some((u) => (email && u.email?.toLowerCase() === email.toLowerCase()) || u.phone === phone)) {
+    // Khách từng đặt nhanh bằng số điện thoại này: hồ sơ thành tài khoản, giữ các đơn đã đặt
+    const guest = db.users.find((u) => u.isGuest && u.phone === phone);
+    if (db.users.some((u) => u !== guest && ((email && u.email?.toLowerCase() === email.toLowerCase()) || u.phone === phone))) {
       throw new ApiError(email ? 'Email hoặc số điện thoại đã được đăng ký.' : 'Số điện thoại đã được đăng ký.', 409);
     }
-    const user = { id: `u-${Date.now()}`, name: name.trim(), email, phone, password, roles: ['KHACH'], locked: false, address: '', ward: '', createdAt: nowIso(), consentAt: nowIso() };
-    db.users.push(user);
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id, at: nowIso() }));
+    const user = guest || { id: `u-${Date.now()}`, roles: ['KHACH'], locked: false, address: '', ward: '', createdAt: nowIso() };
+    Object.assign(user, { name: name.trim(), email: email || user.email || null, phone, password, isGuest: false, consentAt: nowIso() });
+    if (!guest) db.users.push(user);
+    startSession(user);
     audit(db, user, 'DANG_KY', user.id);
     return publicUser(user);
   }, 400),
@@ -502,29 +545,54 @@ export const mockApi = {
   }, 650),
 
   /* ---------- Phiếu yêu cầu (UC04, UC06, UC07) ---------- */
-  createTicket: (data) => respond((db) => {
-    const user = requireRole(db, 'KHACH');
-    if (!data.deviceId || !db.devices.some((d) => d.id === data.deviceId && d.customerId === user.id)) throw new ApiError('Vui lòng chọn thiết bị.');
-    if ((data.description || '').trim().length < 10) throw new ApiError('Mô tả sự cố cần ít nhất 10 ký tự.');
-    if (!data.address?.trim() || !data.ward) throw new ApiError('Vui lòng nhập địa chỉ và chọn phường.');
-    if (!db.config.areas.includes(data.ward)) throw new ApiError('Phường này hiện chưa nằm trong khu vực phục vụ.');
-    const slotError = validateSlot(data.slotStart, db.config);
-    if (slotError) throw new ApiError(slotError);
-    if (!data.acceptTerms || !data.acceptPrivacy) throw new ApiError('Bạn cần đồng ý điều khoản dịch vụ và xử lý dữ liệu cá nhân.');
-    if ((data.photos || []).length > 5) throw new ApiError('Mỗi yêu cầu đính kèm tối đa 5 ảnh.');
-    const t = createTicketRecord(db, {
-      ...data,
-      customerId: user.id,
-      contactPhone: user.phone,
-      actorName: user.name,
-      categoryCode: data.categoryCode || data.aiResult?.categoryCode || 'KHAC',
-      urgency: data.aiResult?.urgency || 'TRUNG_BINH',
-    });
-    audit(db, user, 'TAO_PHIEU', t.id);
-    notify(db, dispatcherIds(db), 'Phiếu mới cần tiếp nhận', `${user.name} vừa gửi phiếu ${t.id}.`, t.id);
-    notify(db, [user.id], 'Đã nhận yêu cầu', `Phiếu ${t.id} đã được ghi nhận. Vui lòng chuyển phí giữ lịch ${money(db.config.surveyFee)} trong ${db.config.depositMinutes} phút để cửa hàng tiếp nhận.`, t.id);
-    return enrichTicket(db, t, user);
+  createTicket: (data) => respond((db) => createTicketFor(db, requireRole(db, 'KHACH'), data), 450),
+
+  classifyGuest: (body) => mockApi.classifyIssue(body),
+
+  /** Đặt lịch không cần tài khoản: thông tin liên hệ và thiết bị nhập trực tiếp. */
+  createGuestTicket: (data) => respond((db) => {
+    const phone = (data.phone || '').replace(/\s/g, '');
+    const email = (data.email || '').trim() || null;
+    if (!data.name?.trim()) throw new ApiError('Vui lòng nhập họ tên.');
+    if (!/^0\d{9}$/.test(phone)) throw new ApiError('Số điện thoại gồm 10 chữ số, bắt đầu bằng 0.');
+    if (email && !EMAIL_RE.test(email)) throw new ApiError('Email không hợp lệ.');
+    if (!['Laptop', 'PC', 'Thiết bị khác'].includes(data.deviceType)) throw new ApiError('Loại thiết bị không hợp lệ.');
+    if (!data.deviceBrand?.trim() || !data.deviceModel?.trim()) throw new ApiError('Vui lòng nhập hãng và dòng máy.');
+    checkTicketFields(db, data);
+    let user = db.users.find((u) => u.phone === phone);
+    if (user && !user.isGuest) {
+      if (!user.roles.includes('KHACH') || user.locked) throw new ApiError('Số điện thoại này không dùng để đặt lịch được. Vui lòng dùng số khác.', 409);
+    } else {
+      if (email && db.users.some((u) => u !== user && u.email?.toLowerCase() === email.toLowerCase())) {
+        throw new ApiError('Email này đã thuộc một tài khoản. Vui lòng đăng nhập hoặc để trống email.', 409);
+      }
+      if (!user) {
+        user = { id: `u-${Date.now()}`, phone, password: null, roles: ['KHACH'], isGuest: true, locked: false, address: '', ward: '', createdAt: nowIso() };
+        db.users.push(user);
+      }
+      Object.assign(user, { name: data.name.trim(), email: email || user.email || null, consentAt: nowIso() });
+    }
+    let device = db.devices.find((d) => d.customerId === user.id && d.type === data.deviceType && d.brand === data.deviceBrand.trim() && d.model === data.deviceModel.trim() && !d.removed);
+    if (!device) {
+      device = { id: `tb-${Date.now()}`, customerId: user.id, type: data.deviceType, brand: data.deviceBrand.trim(), model: data.deviceModel.trim(), note: '' };
+      db.devices.push(device);
+    }
+    const ticket = createTicketFor(db, user, { ...data, deviceId: device.id });
+    audit(db, user, 'DAT_LICH_NHANH', ticket.id);
+    startSession(user, ticket.id);
+    return { user: publicUser(user), ticket };
   }, 450),
+
+  /** Tra cứu đơn bằng mã đơn và số điện thoại. */
+  lookupTicket: ({ ticketId, phone }) => respond((db) => {
+    const t = db.tickets.find((x) => x.id === (ticketId || '').trim().toUpperCase());
+    const customer = t && db.users.find((u) => u.id === t.customerId);
+    if (!t || !customer || customer.locked || customer.phone !== (phone || '').replace(/\s/g, '')) {
+      throw new ApiError('Không tìm thấy đơn với mã đơn và số điện thoại này.', 404);
+    }
+    startSession(customer, t.id);
+    return { user: publicUser(customer), ticketId: t.id };
+  }, 300),
 
   listMyTickets: ({ group, ...paging } = {}) => respond((db) => {
     const user = currentUser(db);
@@ -683,15 +751,17 @@ export const mockApi = {
   /* ---------- Bảo hành (UC15) ---------- */
   listMyWarranties: () => respond((db) => {
     const user = currentUser(db);
+    const scope = sessionTicket();
     return db.warranties
-      .filter((w) => w.customerId === user.id)
+      .filter((w) => w.customerId === user.id && (!scope || w.ticketId === scope))
       .map((w) => ({ ...w, ...warrantyStatus(w), device: db.devices.find((d) => d.id === w.deviceId), claim: db.warrantyClaims.filter((c) => c.warrantyId === w.id).at(-1) || null }))
       .sort((a, b) => Number(b.valid) - Number(a.valid) || b.endAt.localeCompare(a.endAt));
   }, 150),
 
   createWarrantyClaim: ({ warrantyId, description, slotStart }) => respond((db) => {
     const user = requireRole(db, 'KHACH');
-    const w = db.warranties.find((x) => x.id === warrantyId && x.customerId === user.id);
+    const scope = sessionTicket();
+    const w = db.warranties.find((x) => x.id === warrantyId && x.customerId === user.id && (!scope || x.ticketId === scope));
     if (!w) throw new ApiError('Không tìm thấy phiếu bảo hành.', 404);
     if (!warrantyStatus(w).valid) throw new ApiError('Phiếu bảo hành đã hết hạn.', 409);
     if (db.warrantyClaims.some((c) => c.warrantyId === w.id && c.status === 'CHO_XU_LY')) throw new ApiError('Hạng mục này đang có yêu cầu bảo hành chờ xử lý.', 409);
@@ -726,18 +796,18 @@ export const mockApi = {
   /* ---------- Thông báo (UC17) ---------- */
   listNotifications: (paging) => respond((db) => {
     const user = currentUser(db);
-    return pageOf(db.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), paging);
+    return pageOf(db.notifications.filter((n) => mineNote(n, user)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), paging);
   }, 100),
 
   unreadNotifications: () => respond((db) => {
     const user = currentUser(db);
-    return db.notifications.filter((n) => n.userId === user.id && !n.read).length;
+    return db.notifications.filter((n) => mineNote(n, user) && !n.read).length;
   }, 60),
 
   markNotificationsRead: (ids) => respond((db) => {
     const user = currentUser(db);
     db.notifications.forEach((n) => {
-      if (n.userId === user.id && (!ids || ids.includes(n.id))) n.read = true;
+      if (mineNote(n, user) && (!ids || ids.includes(n.id))) n.read = true;
     });
   }, 60),
 
@@ -1380,4 +1450,27 @@ function applyQuoteDecision(db, t, q, actor, decision, itemIds, reason) {
     if (p) p.stock = Math.max(0, p.stock - i.qty);
   });
   transition(db, t, STATUS.DANG_THUC_HIEN, actor, q.status === 'DUYET_MOT_PHAN' ? 'Khách duyệt một phần báo giá' : 'Khách duyệt báo giá');
+}
+
+/* ---------- Phiên tra cứu: chỉ dùng cho đơn đã tra cứu ---------- */
+
+// Giống máy chủ (deps.current_user): phiên tra cứu chỉ gọi được các chức năng của khách trên đơn đó
+const SCOPE_FREE = new Set([
+  'me', 'logout', 'login', 'register', 'requestPasswordReset', 'resetPassword', 'getCatalog', 'resetDemoData',
+  'classifyGuest', 'createGuestTicket', 'lookupTicket',
+  'listMyWarranties', 'createWarrantyClaim', 'listNotifications', 'unreadNotifications', 'markNotificationsRead',
+]);
+const SCOPE_TICKET = new Set([
+  'getTicket', 'cancelTicket', 'rescheduleTicket', 'decideQuote', 'acceptWork', 'getPaymentInfo',
+  'reportTransfer', 'chooseCash', 'getDepositInfo', 'reportDeposit', 'submitReview',
+]);
+for (const [name, fn] of Object.entries(mockApi)) {
+  if (typeof fn !== 'function' || SCOPE_FREE.has(name)) continue;
+  mockApi[name] = (...args) => {
+    const scope = sessionTicket();
+    if (scope && !(SCOPE_TICKET.has(name) && args[0] === scope)) {
+      return Promise.reject(new ApiError(`Phiên tra cứu chỉ dùng cho đơn ${scope}. Vui lòng đăng nhập để dùng chức năng này.`, 403));
+    }
+    return fn(...args);
+  };
 }

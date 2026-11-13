@@ -66,6 +66,7 @@ Mọi thay đổi trạng thái phiếu đi qua một hàm duy nhất `services/
 | BR-10 | Đánh giá một lần trong thời hạn cấu hình; từ 2 sao trở xuống bắt buộc ghi lý do và báo quản trị viên |
 | BR-11 | Cần ít nhất 1 ảnh trước và 1 ảnh sau mới báo hoàn thành |
 | BR-12 | Thông tin đăng nhập máy mã hóa AES-256-GCM, chỉ kỹ thuật viên phụ trách xem, tự xóa khi phiếu kết thúc |
+| Đặt nhanh | Khách đặt lịch không cần tài khoản bằng họ tên, số điện thoại, địa chỉ, email tùy chọn; số điện thoại của tài khoản khách đã đăng ký thì đơn gắn vào tài khoản đó; khách đặt nhanh đăng ký bằng cùng số điện thoại thì các đơn chuyển vào tài khoản (`services/guest.py`, `services/auth.py: register`) |
 | UC08 ngoại lệ 4a | Thao tác gửi kèm `version` của phiếu; dữ liệu cũ bị từ chối với mã 409 |
 
 ## Endpoint chính
@@ -75,6 +76,7 @@ Tất cả có tiền tố `/api/v1`. Xác thực bằng `Authorization: Bearer 
 | Nhóm | Endpoint | Use case |
 |---|---|---|
 | Xác thực | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/change-password`, `GET /auth/me` | UC01 |
+| Khách không cần tài khoản | `POST /guest/classify`, `POST /guest/tickets` (đặt lịch nhanh), `POST /guest/lookup` (tra cứu bằng mã đơn và số điện thoại) | UC04, UC05, UC07 |
 | Hồ sơ | `PATCH /me`, `GET/POST /me/devices`, `DELETE /me/devices/{id}`, `GET /me/export`, `POST /me/deletion-request`, `POST /me/telegram-link` | UC02, NFR-10 |
 | Danh mục | `GET /catalog`, `GET /parts` | UC03 |
 | Khách hàng | `POST /classify`, `POST /tickets`, `GET /tickets/mine`, `GET /tickets/{id}`, `POST /tickets/{id}/cancel`, `/reschedule`, `/quotes/{qid}/decision`, `/acceptance`, `GET /tickets/{id}/deposit`, `POST /tickets/{id}/deposit/transfer`, `GET /tickets/{id}/payment`, `POST /tickets/{id}/payment/transfer`, `/payment/cash`, `/review`, `GET /warranties/mine`, `POST /warranty-claims` | UC04–UC07, UC11, UC13–UC16 |
@@ -89,7 +91,8 @@ Lỗi nghiệp vụ trả về `{"detail": "<thông báo tiếng Việt>"}` vớ
 
 ## Bảo mật
 
-- Mọi endpoint trừ đăng ký, đăng nhập, làm mới phiên, quên mật khẩu, danh mục và kiểm tra trạng thái đều cần đăng nhập; quyền theo vai trò kiểm tra ở backend (NFR-05). `tests/test_security.py` thử toàn bộ endpoint với từng vai trò.
+- Mọi endpoint trừ đăng ký, đăng nhập, làm mới phiên, quên mật khẩu, đặt nhanh, tra cứu đơn, danh mục và kiểm tra trạng thái đều cần đăng nhập; quyền theo vai trò kiểm tra ở backend (NFR-05). `tests/test_security.py` thử toàn bộ endpoint với từng vai trò.
+- Đặt nhanh và tra cứu đơn trả về phiên tra cứu: access token 120 phút, không có refresh token, chỉ gọi được các endpoint của khách trên đơn đó, thông báo và bảo hành của đơn đó (`api/deps.py`). Tra cứu sai quá 10 lần trong 15 phút từ một địa chỉ IP thì bị chặn tạm thời (429).
 - Truy vấn qua ORM có tham số; nội dung người dùng nhập được trả về dạng chữ thuần, giao diện React không chèn HTML; ảnh tải lên chỉ nhận JPEG, PNG, WebP đúng chữ ký tệp (NFR-09).
 - Phản hồi có `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`; dữ liệu API không lưu bộ nhớ đệm. Giao diện qua nginx có thêm Content-Security-Policy (`frontend/security-headers.conf`).
 - Khi `APP_ENV=production`, backend không khởi động nếu `JWT_SECRET`, `CREDENTIAL_KEY` là giá trị mặc định hoặc ngắn hơn 32 ký tự.

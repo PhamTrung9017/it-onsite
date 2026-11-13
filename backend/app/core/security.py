@@ -27,7 +27,8 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int, roles: list[str]) -> str:
+def create_access_token(user_id: int, roles: list[str], ticket: str | None = None, minutes: int | None = None) -> str:
+    """`ticket`: phiên tra cứu bằng mã đơn và số điện thoại, chỉ dùng được cho đơn đó."""
     settings = get_settings()
     now = datetime.now(UTC)
     payload = {
@@ -35,8 +36,10 @@ def create_access_token(user_id: int, roles: list[str]) -> str:
         "roles": roles,
         "type": "access",
         "iat": now,
-        "exp": now + timedelta(minutes=settings.access_token_minutes),
+        "exp": now + timedelta(minutes=minutes or settings.access_token_minutes),
     }
+    if ticket:
+        payload["ticket"] = ticket
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 

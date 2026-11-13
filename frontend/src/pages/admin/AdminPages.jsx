@@ -210,7 +210,7 @@ export function AccountsPage() {
                 <tr key={u.id}>
                   <td className="strong">{u.name}{u.id === me.id && <span className="tiny muted"> (bạn)</span>}</td>
                   <td className="small"><div>{u.email}</div><div className="muted">{u.phone}</div></td>
-                  <td><div className="row-sm wrap">{u.roles.map((r) => <Badge key={r} tone={r === 'QTV' ? 'accent' : r === 'KHACH' ? 'muted' : 'primary'} plain>{ROLE_LABEL[r]}</Badge>)}</div></td>
+                  <td><div className="row-sm wrap">{u.roles.map((r) => <Badge key={r} tone={r === 'QTV' ? 'accent' : r === 'KHACH' ? 'muted' : 'primary'} plain>{ROLE_LABEL[r]}</Badge>)}{u.isGuest && <Badge tone="warning" plain>Đặt nhanh, chưa có mật khẩu</Badge>}</div></td>
                   <td>{u.locked ? <Badge tone="danger">Đã khóa</Badge> : <Badge tone="success">Hoạt động</Badge>}</td>
                   <td className="right"><Button variant="ghost" size="sm" icon={ShieldCheck} onClick={() => setEdit({ ...u })}>Phân quyền</Button></td>
                 </tr>

@@ -86,6 +86,32 @@ class CreateTicketBody(Body):
     accept_privacy: bool = False
 
 
+class GuestTicketBody(Body):
+    """Đặt lịch không cần tài khoản: thông tin liên hệ và thiết bị nhập trực tiếp."""
+
+    name: str = Field(max_length=120)
+    phone: str = Field(max_length=20)
+    email: str = Field(default="", max_length=160)
+    device_type: str = Field(max_length=20)
+    device_brand: str = Field(max_length=80)
+    device_model: str = Field(max_length=120)
+    description: str = Field(max_length=2000)
+    photos: list[str] = Field(default_factory=list, max_length=5)
+    address: str = Field(max_length=255)
+    ward: str = Field(max_length=80)
+    slot_start: AwareDatetime
+    category_code: str | None = Field(default=None, max_length=20)
+    ai_result: dict | None = None
+    device_credentials: str = Field(default="", max_length=500)
+    accept_terms: bool = False
+    accept_privacy: bool = False
+
+
+class GuestLookupBody(Body):
+    ticket_id: str = Field(max_length=30)
+    phone: str = Field(max_length=20)
+
+
 class RescheduleBody(Body):
     slot_start: AwareDatetime
 

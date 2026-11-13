@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Laptop, Monitor, Plus, Printer, RefreshCw, Send, ShieldCheck, Sparkles } from 'lucide-react';
 import { useAuth, useNotifications, useToast } from '../../context/AppContext.jsx';
 import { useLoad } from '../../hooks/useApi.js';
@@ -30,13 +30,15 @@ function Stepper({ step }) {
   );
 }
 
-export default function CreateRequestPage() {
-  const { user } = useAuth();
+/** Đặt lịch hỗ trợ; `guest`: khách đặt nhanh không cần tài khoản, nhập thông tin liên hệ và thiết bị trực tiếp. */
+export default function CreateRequestPage({ guest = false }) {
+  const { user: account, startGuest } = useAuth();
+  const user = (guest && !account?.guestTicket ? null : account) || {};
   const toast = useToast();
   const { refresh } = useNotifications();
   const navigate = useNavigate();
   const { data, loading, error, reload } = useLoad(async () => {
-    const [catalog, devices] = await Promise.all([api.getCatalog(), api.listDevices()]);
+    const [catalog, devices] = await Promise.all([api.getCatalog(), guest ? [] : api.listDevices()]);
     return { ...catalog, devices };
   }, []);
   const [step, setStep] = useState(0);
@@ -55,6 +57,7 @@ export default function CreateRequestPage() {
   const [credentials, setCredentials] = useState('');
   const [terms, setTerms] = useState(false);
   const [privacy, setPrivacy] = useState(false);
+  const [contact, setContact] = useState({ name: user.name || '', phone: user.phone || '', email: user.email || '' });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -79,7 +82,7 @@ export default function CreateRequestPage() {
     try {
       // NFR-03: quá 10 giây thì bỏ qua gợi ý, không chặn việc tạo phiếu
       const result = await Promise.race([
-        api.classifyIssue({ description }),
+        (guest ? api.classifyGuest : api.classifyIssue)({ description }),
         new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000)),
       ]);
       setAi(result);
@@ -102,6 +105,11 @@ export default function CreateRequestPage() {
 
   function validateStep2() {
     const e = {};
+    if (guest) {
+      if (!contact.name.trim()) e.name = 'Vui lòng nhập họ tên.';
+      if (!/^0\d{9}$/.test(contact.phone.replace(/\s/g, ''))) e.phone = 'Số điện thoại gồm 10 chữ số, bắt đầu bằng 0.';
+      if (contact.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim())) e.email = 'Email không hợp lệ.';
+    }
     if (!address.trim()) e.address = 'Vui lòng nhập số nhà, tên đường.';
     if (!ward) e.ward = 'Vui lòng chọn phường.';
     const slotErr = validateSlot(slotStart, data.config);
@@ -125,18 +133,30 @@ export default function CreateRequestPage() {
     if (!validateStep2()) return;
     setSubmitting(true);
     try {
+      const aiResult = ai && ai.state !== 'failed'
+        ? { categoryCode: ai.categoryCode, confidence: ai.confidence, urgency: ai.urgency, reason: ai.reason, state: ai.state, promptVersion: ai.promptVersion, ms: ai.ms }
+        : { state: 'failed' };
+      const request = {
+        description: description.trim(), photos, address: address.trim(), ward, slotStart,
+        categoryCode, aiResult, deviceCredentials: credentials.trim(), acceptTerms: terms, acceptPrivacy: privacy,
+      };
+      if (guest) {
+        const { user: me, ticket } = await api.createGuestTicket({
+          ...request,
+          name: contact.name.trim(), phone: contact.phone.replace(/\s/g, ''), email: contact.email.trim(),
+          deviceType: newDevice.type, deviceBrand: newDevice.brand.trim(), deviceModel: newDevice.model.trim(),
+        });
+        startGuest(me);
+        toast.success(`Đã tạo đơn ${ticket.id}. Hãy lưu mã đơn để tra cứu sau.`);
+        navigate(`/khach/phieu/${ticket.id}`, { replace: true });
+        return;
+      }
       let devId = deviceId;
       if (deviceId === 'new') {
         const d = await api.addDevice(newDevice);
         devId = d.id;
       }
-      const aiResult = ai && ai.state !== 'failed'
-        ? { categoryCode: ai.categoryCode, confidence: ai.confidence, urgency: ai.urgency, reason: ai.reason, state: ai.state, promptVersion: ai.promptVersion, ms: ai.ms }
-        : { state: 'failed' };
-      const t = await api.createTicket({
-        deviceId: devId, description: description.trim(), photos, address: address.trim(), ward, slotStart,
-        categoryCode, aiResult, deviceCredentials: credentials.trim(), acceptTerms: terms, acceptPrivacy: privacy,
-      });
+      const t = await api.createTicket({ ...request, deviceId: devId });
       refresh();
       toast.success(`Đã tạo phiếu ${t.id}. Điều phối viên sẽ phân công kỹ thuật viên sớm.`);
       navigate(`/khach/phieu/${t.id}`, { replace: true });
@@ -149,14 +169,20 @@ export default function CreateRequestPage() {
 
   return (
     <div className="narrow" style={{ width: '100%', maxWidth: 760 }}>
-      <PageHead title="Đặt lịch hỗ trợ" sub="Mô tả sự cố, chọn giờ hẹn, kỹ thuật viên sẽ đến tận nơi" />
+      <PageHead title={guest ? 'Đặt lịch nhanh' : 'Đặt lịch hỗ trợ'} sub="Mô tả sự cố, chọn giờ hẹn, kỹ thuật viên sẽ đến tận nơi" />
       <div className="stack">
+        {guest && (
+          <Alert tone="info" title="Không cần tài khoản">
+            Sau khi gửi, bạn nhận mã đơn để tra cứu và theo dõi bằng mã đơn cùng số điện thoại.
+            Muốn xem lại mọi đơn đã đặt? <Link to="/dang-ky">Tạo tài khoản</Link> hoặc <Link to="/dang-nhap">đăng nhập</Link>.
+          </Alert>
+        )}
         <Stepper step={step} />
 
         {step === 0 && (
           <Card>
             <div className="stack">
-              <div className="field">
+              {!guest && <div className="field">
                 <span className="label">Thiết bị cần hỗ trợ</span>
                 <div className="choice-grid">
                   {data.devices.map((d) => (
@@ -170,9 +196,10 @@ export default function CreateRequestPage() {
                     <Plus aria-hidden /><span className="t">Thiết bị khác</span><span className="s">Thêm thiết bị mới</span>
                   </button>
                 </div>
-              </div>
+              </div>}
               {deviceId === 'new' && (
                 <div className="stack-sm" style={{ padding: 16, background: 'var(--bg)', borderRadius: 12 }}>
+                  {guest && <span className="label">Thiết bị cần hỗ trợ</span>}
                   <div className="segmented" role="group" aria-label="Loại thiết bị">
                     {TYPES.map(({ value, icon: I }) => (
                       <button key={value} type="button" aria-pressed={newDevice.type === value} onClick={() => setNewDevice({ ...newDevice, type: value })}><I size={16} aria-hidden />{value}</button>
@@ -182,7 +209,7 @@ export default function CreateRequestPage() {
                     <Field label="Hãng" htmlFor="brand"><input id="brand" className="input" placeholder="Ví dụ: Dell" value={newDevice.brand} onChange={(e) => setNewDevice({ ...newDevice, brand: e.target.value })} /></Field>
                     <Field label="Dòng máy" htmlFor="model"><input id="model" className="input" placeholder="Ví dụ: Inspiron 15 3520" value={newDevice.model} onChange={(e) => setNewDevice({ ...newDevice, model: e.target.value })} /></Field>
                   </div>
-                  <Field label="Ghi chú thiết bị (không bắt buộc)" htmlFor="dnote"><input id="dnote" className="input" maxLength={255} placeholder="Ví dụ: máy đặt ở phòng kế toán, tầng 2" value={newDevice.note} onChange={(e) => setNewDevice({ ...newDevice, note: e.target.value })} /></Field>
+                  {!guest && <Field label="Ghi chú thiết bị (không bắt buộc)" htmlFor="dnote"><input id="dnote" className="input" maxLength={255} placeholder="Ví dụ: máy đặt ở phòng kế toán, tầng 2" value={newDevice.note} onChange={(e) => setNewDevice({ ...newDevice, note: e.target.value })} /></Field>}
                   {errors.device && <span className="small" style={{ color: 'var(--danger)' }}>{errors.device}</span>}
                 </div>
               )}
@@ -242,6 +269,13 @@ export default function CreateRequestPage() {
         {step === 2 && (
           <Card>
             <div className="stack">
+              {guest && (
+                <div className="grid-2">
+                  <Field label="Họ tên" htmlFor="gname" error={errors.name}><input id="gname" className="input" autoComplete="name" aria-invalid={Boolean(errors.name)} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} /></Field>
+                  <Field label="Số điện thoại" htmlFor="gphone" error={errors.phone} hint="Dùng cùng mã đơn để tra cứu"><input id="gphone" className="input" type="tel" inputMode="numeric" autoComplete="tel" aria-invalid={Boolean(errors.phone)} value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} placeholder="09xxxxxxxx" /></Field>
+                  <Field label="Email (không bắt buộc)" htmlFor="gemail" error={errors.email} hint="Nhận mã đơn và biên nhận qua email"><input id="gemail" className="input" type="email" autoComplete="email" aria-invalid={Boolean(errors.email)} value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} /></Field>
+                </div>
+              )}
               <div className="grid-2">
                 <Field label="Số nhà, tên đường" htmlFor="addr" error={errors.address}><input id="addr" className="input" aria-invalid={Boolean(errors.address)} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Ví dụ: 120 Nguyễn Trãi" /></Field>
                 <Field label="Phường" htmlFor="ward" error={errors.ward} hint={oldWardText(ward) ? `Gồm địa bàn cũ: ${oldWardText(ward)}` : 'Theo tên phường mới từ 01/07/2025'}>

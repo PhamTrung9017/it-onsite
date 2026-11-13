@@ -1,7 +1,8 @@
+import re
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Query, Response
+from fastapi import Depends, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,18 @@ bearer = HTTPBearer(auto_error=False)
 Db = Annotated[Session, Depends(get_db)]
 
 
-def current_user(db: Db, credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> User:
+# Phiên tra cứu đơn chỉ gọi được các API của đơn đó, thông báo và bảo hành của đơn đó
+SCOPED_PATHS = (r"/auth/me", r"/notifications(/.*)?", r"/warranties/mine", r"/warranty-claims")
+
+
+def _allowed_for_scope(path: str, ticket_id: str) -> bool:
+    path = path.removeprefix("/api/v1")
+    if path == f"/tickets/{ticket_id}" or path.startswith(f"/tickets/{ticket_id}/"):
+        return True
+    return any(re.fullmatch(pattern, path) for pattern in SCOPED_PATHS)
+
+
+def current_user(request: Request, db: Db, credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> User:
     expired = ApiError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", 401)
     if credentials is None:
         raise expired
@@ -27,6 +39,11 @@ def current_user(db: Db, credentials: Annotated[HTTPAuthorizationCredentials | N
     user = db.get(User, int(payload["sub"]))
     if user is None or user.locked:
         raise expired
+    scope = payload.get("ticket")
+    if scope:
+        if not _allowed_for_scope(request.url.path, scope):
+            raise ApiError(f"Phiên tra cứu chỉ dùng cho đơn {scope}. Vui lòng đăng nhập để dùng chức năng này.", 403)
+        user.scope_ticket = scope
     return user
 
 
