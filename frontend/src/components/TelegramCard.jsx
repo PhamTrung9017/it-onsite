@@ -4,6 +4,14 @@ import { useAction, useLoad } from '../hooks/useApi.js';
 import { api } from '../services/api.js';
 import { Badge, Button, Card } from './ui.jsx';
 
+/** Lệnh xem nhanh trong bot theo vai trò. */
+function commandHint(roles = []) {
+  const commands = [];
+  if (roles.includes('KTV')) commands.push('/viec (việc hôm nay)');
+  if (roles.includes('QTV') || roles.includes('DPV')) commands.push('/tongquan (tổng quan hôm nay)');
+  return commands.length ? `Gõ trong bot: ${commands.join(', ')}.` : '';
+}
+
 /** UC17: gắn tài khoản với Telegram để nhận thông báo ngay trên điện thoại. */
 export function TelegramCard({ text = 'Nhận cập nhật trạng thái phiếu, báo giá và lịch hẹn qua Telegram.' }) {
   const { user } = useAuth();
@@ -18,6 +26,7 @@ export function TelegramCard({ text = 'Nhận cập nhật trạng thái phiếu
     <Card title="Thông báo qua Telegram" action={user.telegramLinked && <Badge tone="success">Đã kết nối</Badge>}>
       <div className="stack-sm">
         <p className="small muted">{text}</p>
+        {user.telegramLinked && commandHint(user.roles) && <p className="small">{commandHint(user.roles)}</p>}
         <div>
           <Button variant="outline" icon={Send} loading={busy === 'telegram'} onClick={connect}>
             {user.telegramLinked ? 'Kết nối lại' : 'Kết nối Telegram'}

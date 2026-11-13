@@ -16,6 +16,12 @@ from app.services.common import load_config, utcnow
 logger = logging.getLogger(__name__)
 
 REJECT_REASONS = {"1": "Đang bận lịch khác", "2": "Ở xa khu vực", "3": "Không đúng chuyên môn"}
+# Lệnh hiện trong menu của bot (xử lý ở telegram_commands)
+BOT_COMMANDS = [
+    ("viec", "Việc hôm nay của kỹ thuật viên"),
+    ("tongquan", "Tổng quan hôm nay (quản trị viên, điều phối viên)"),
+    ("trogiup", "Các lệnh của bot"),
+]
 
 
 def enabled() -> bool:
@@ -75,3 +81,4 @@ def register_webhook() -> None:
             "allowed_updates": ["message", "callback_query"],
         },
     )
+    call("setMyCommands", {"commands": [{"command": name, "description": text} for name, text in BOT_COMMANDS]})
