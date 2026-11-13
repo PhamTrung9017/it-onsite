@@ -355,6 +355,19 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await expect(page.getByText('CAU_HINH').first()).toBeVisible();
   });
 
+  test('Quản trị viên xem tình trạng hệ thống', async ({ page }) => {
+    await loginAs(page, 'qtv@demo.vn');
+    await page.getByRole('link', { name: 'Tình trạng hệ thống' }).first().click();
+    await expect(page.getByRole('heading', { name: 'Tình trạng hệ thống' })).toBeVisible();
+    const database = page.getByRole('row', { name: /Cơ sở dữ liệu/ });
+    await expect(database.getByText('Hoạt động tốt')).toBeVisible();
+    for (const name of ['Tác vụ nền', 'Hàng đợi thông báo', 'Bot Telegram', 'Nhóm Telegram', 'Email', 'AI phân loại sự cố']) {
+      await expect(page.getByRole('row', { name: new RegExp(name) })).toBeVisible();
+    }
+    await page.getByRole('button', { name: 'Kiểm tra lại' }).click();
+    await expect(database.getByText('Hoạt động tốt')).toBeVisible();
+  });
+
   test('Quản trị viên nạp lại dữ liệu trình diễn', async ({ page }) => {
     await loginAs(page, 'qtv@demo.vn');
     await page.goto('/quan-tri/cau-hinh');

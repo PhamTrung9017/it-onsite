@@ -20,7 +20,7 @@ import BoardPage from './pages/dispatcher/BoardPage.jsx';
 import PaymentsPage from './pages/dispatcher/PaymentsPage.jsx';
 import WarrantyClaimsPage from './pages/dispatcher/WarrantyClaimsPage.jsx';
 import ReportsPage from './pages/admin/ReportsPage.jsx';
-import { AccountsPage, AuditPage, ConfigPage, PartsPage, ServicesPage, TechniciansPage } from './pages/admin/AdminPages.jsx';
+import { AccountsPage, AuditPage, ConfigPage, PartsPage, ServicesPage, SystemStatusPage, TechniciansPage } from './pages/admin/AdminPages.jsx';
 
 export default function App() {
   return (
@@ -80,6 +80,7 @@ export default function App() {
           <Route path="tai-khoan" element={<AccountsPage />} />
           <Route path="cau-hinh" element={<ConfigPage />} />
           <Route path="nhat-ky" element={<AuditPage />} />
+          <Route path="tinh-trang" element={<SystemStatusPage />} />
           <Route path="thong-bao" element={<NotificationsPage telegramText="Kết nối Telegram để nhận thông báo và kết nối nhóm chat chung của đội với IT OnSite." />} />
         </Route>
       </Route>

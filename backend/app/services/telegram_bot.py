@@ -30,7 +30,7 @@ def _user_of(db: Session, telegram_user_id) -> User | None:
 
 
 def _reply(chat_id, text: str) -> None:
-    telegram.call("sendMessage", {"chat_id": chat_id, "text": text})
+    telegram.call("sendMessage", {"chat_id": chat_id, "text": text, "link_preview_options": {"is_disabled": True}})
 
 
 def _handle_message(db: Session, message: dict) -> None:

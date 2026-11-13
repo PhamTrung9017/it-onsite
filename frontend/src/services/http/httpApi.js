@@ -172,6 +172,7 @@ export const httpApi = {
   createInternalUser: (body) => post('/admin/users', body),
   saveConfig: (body) => put('/admin/config', body),
   resetDemoData: () => post('/admin/demo-data/reset'),
+  systemStatus: () => get('/admin/system-status'),
   report: (period) => get(`/admin/reports?${query(period)}`),
   reportExport: (period) => get(`/admin/reports/export?${query(period)}`),
 };
