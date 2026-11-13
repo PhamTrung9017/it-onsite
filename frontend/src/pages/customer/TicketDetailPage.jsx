@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, Copy, CreditCard, FileText, Phone, QrCode, Receipt, ThumbsDown, Wallet, XCircle } from 'lucide-react';
 import { useAction, useLoad } from '../../hooks/useApi.js';
-import { useNotifications, useToast } from '../../context/AppContext.jsx';
+import { useAuth, useNotifications, useToast } from '../../context/AppContext.jsx';
 import { api } from '../../services/api.js';
 import {
   Alert, Badge, Button, ButtonLink, Card, ErrorState, Field, Loading, Modal, PageHead, PhotoGallery, QRImage, StarInput, Stars, StatusBadge,
@@ -61,6 +61,9 @@ export default function TicketDetailPage() {
   const { data: t, loading, error, reload, setData } = useLoad(() => api.getTicket(id), [id]);
   const { busy, run } = useAction();
   const { refresh } = useNotifications();
+  const { user } = useAuth();
+  const toast = useToast();
+  const guest = Boolean(user?.guestTicket);
   const [modal, setModal] = useState(null);
   const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
@@ -84,7 +87,7 @@ export default function TicketDetailPage() {
   return (
     <>
       <PageHead
-        crumbs={[{ label: 'Phiếu của tôi', to: '/khach/phieu' }, { label: t.id }]}
+        crumbs={guest ? [{ label: 'Tra cứu đơn', to: '/tra-cuu' }, { label: t.id }] : [{ label: 'Phiếu của tôi', to: '/khach/phieu' }, { label: t.id }]}
         title={`${t.category?.name || 'Yêu cầu hỗ trợ'}`}
         sub={<span className="row-sm wrap"><span className="mono">{t.id}</span>·<span>{t.device?.brand} {t.device?.model}</span>{t.isWarranty && <Badge tone="success" plain>Phiếu bảo hành</Badge>}</span>}
         actions={<StatusBadge status={t.status} />}
@@ -92,6 +95,15 @@ export default function TicketDetailPage() {
 
       <div className="split">
         <div className="stack">
+          {guest && (
+            <Alert tone="info" title={`Mã đơn của bạn: ${t.id}`}>
+              Lưu mã đơn này cùng số điện thoại {user.phone} để <Link to={`/tra-cuu?ma=${t.id}`}>tra cứu lại</Link> bất cứ lúc nào.
+              {user.isGuest && <> Muốn xem lại mọi đơn đã đặt? <Link to="/dang-ky">Tạo tài khoản</Link> bằng số điện thoại này.</>}
+              <div style={{ marginTop: 8 }}>
+                <Button variant="outline" size="sm" icon={Copy} onClick={() => navigator.clipboard?.writeText(t.id).then(() => toast.success('Đã sao chép mã đơn.'))}>Sao chép mã đơn</Button>
+              </div>
+            </Alert>
+          )}
           {/* Việc khách cần làm */}
           {t.status === STATUS.MOI && t.deposit && <DepositCard ticket={t} onReported={() => { refresh(); reload(true); }} />}
           {pendingQuote && (
@@ -253,7 +265,7 @@ export default function TicketDetailPage() {
         footer={<><Button variant="outline" onClick={() => setModal(null)}>Đóng</Button><Button loading={busy === 'nok'} onClick={() => act('nok', () => api.acceptWork(t.id, { ok: false, reason }), 'Đã gửi yêu cầu làm lại cho kỹ thuật viên.')}>Gửi yêu cầu</Button></>}>
         <Field label="Điểm chưa đạt" htmlFor="nr" hint="Mô tả cụ thể để kỹ thuật viên xử lý đúng chỗ"><textarea id="nr" className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
       </Modal>
-      <div className="mobile-only" style={{ marginTop: 16 }}><Link to="/khach/phieu" className="small">← Tất cả phiếu</Link></div>
+      {!guest && <div className="mobile-only" style={{ marginTop: 16 }}><Link to="/khach/phieu" className="small">← Tất cả phiếu</Link></div>}
     </>
   );
 }

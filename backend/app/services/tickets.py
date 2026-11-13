@@ -485,7 +485,10 @@ def submit_review(db: Session, user: User, ticket_id: str, stars: int, comment: 
 
 def list_my_warranties(db: Session, user: User) -> list[dict]:
     now = utcnow()
-    warranties = db.scalars(select(Warranty).where(Warranty.customer_id == user.id)).all()
+    query = select(Warranty).where(Warranty.customer_id == user.id)
+    if user.scope_ticket:
+        query = query.where(Warranty.ticket_id == user.scope_ticket)
+    warranties = db.scalars(query).all()
     claims = db.scalars(select(WarrantyClaim).where(WarrantyClaim.customer_id == user.id).order_by(WarrantyClaim.created_at)).all()
     claim_by_warranty = {c.warranty_id: c for c in claims}
     result = []
@@ -499,7 +502,7 @@ def list_my_warranties(db: Session, user: User) -> list[dict]:
 def create_warranty_claim(db: Session, user: User, warranty_id: int, description: str, slot_start: datetime) -> WarrantyClaim:
     require_roles(user, "KHACH")
     warranty = db.get(Warranty, warranty_id)
-    if warranty is None or warranty.customer_id != user.id:
+    if warranty is None or warranty.customer_id != user.id or (user.scope_ticket and warranty.ticket_id != user.scope_ticket):
         raise not_found("Không tìm thấy phiếu bảo hành.")
     now = utcnow()
     if not warranty_status(warranty.end_at, now)["valid"]:

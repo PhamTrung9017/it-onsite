@@ -30,6 +30,8 @@ def user_json(user: User) -> dict:
         "ward": user.ward,
         "locked": user.locked,
         "telegramLinked": bool(user.telegram_chat_id),
+        "isGuest": user.is_guest,
+        "guestTicket": user.scope_ticket,
     }
 
 

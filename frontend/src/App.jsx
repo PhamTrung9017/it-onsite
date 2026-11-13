@@ -3,7 +3,8 @@ import { MobileAppLayout, PublicLayout, RequireRole, ShellLayout } from './compo
 import { NotificationsPage } from './components/ticket.jsx';
 import HomePage from './pages/public/HomePage.jsx';
 import PricingPage from './pages/public/PricingPage.jsx';
-import { ForgotPasswordPage, LoginPage, NotFoundPage, RegisterPage, ResetPasswordPage } from './pages/public/AuthPages.jsx';
+import { ForgotPasswordPage, LoginPage, LookupPage, NotFoundPage, RegisterPage, ResetPasswordPage } from './pages/public/AuthPages.jsx';
+import GuestBookingPage from './pages/public/GuestBookingPage.jsx';
 import TicketsPage from './pages/customer/TicketsPage.jsx';
 import CreateRequestPage from './pages/customer/CreateRequestPage.jsx';
 import TicketDetailPage from './pages/customer/TicketDetailPage.jsx';
@@ -28,10 +29,12 @@ export default function App() {
       <Route element={<PublicLayout />}>
         <Route index element={<HomePage />} />
         <Route path="bang-gia" element={<PricingPage />} />
+        <Route path="dat-lich" element={<GuestBookingPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route path="dang-nhap" element={<LoginPage />} />
       <Route path="dang-ky" element={<RegisterPage />} />
+      <Route path="tra-cuu" element={<LookupPage />} />
       <Route path="quen-mat-khau" element={<ForgotPasswordPage />} />
       <Route path="dat-lai-mat-khau" element={<ResetPasswordPage />} />
 

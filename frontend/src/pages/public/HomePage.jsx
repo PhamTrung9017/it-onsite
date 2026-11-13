@@ -30,8 +30,8 @@ export default function HomePage() {
             <h1>Sửa máy tính, cài phần mềm <em>tận nhà</em> với giá minh bạch</h1>
             <p className="lead">Đặt lịch trong vài phút, biết giá trước khi làm, theo dõi từng bước xử lý và nhận bảo hành điện tử cho mọi hạng mục.</p>
             <div className="cta">
-              <ButtonLink to="/khach/tao-yeu-cau" variant="accent" size="lg" icon={CalendarClock}>Đặt lịch hỗ trợ</ButtonLink>
-              <ButtonLink to="/bang-gia" variant="outline" size="lg">Xem bảng giá</ButtonLink>
+              <ButtonLink to="/dat-lich" variant="accent" size="lg" icon={CalendarClock}>Đặt lịch hỗ trợ</ButtonLink>
+              <ButtonLink to="/tra-cuu" variant="outline" size="lg">Tra cứu đơn</ButtonLink>
             </div>
             <div className="trust">
               <div><BadgeCheck aria-hidden />Duyệt báo giá trước khi làm</div>

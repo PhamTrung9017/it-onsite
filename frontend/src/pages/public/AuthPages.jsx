@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, KeyRound, Lock, Mail, Phone, User } from 'lucide-react';
+import { CheckCircle2, Hash, KeyRound, Lock, Mail, Phone, Search, User } from 'lucide-react';
 import { ROLE_HOME, ROLE_LABEL, useAuth } from '../../context/AppContext.jsx';
 import { api, usingMockApi } from '../../services/api.js';
 import { Alert, Button, Field } from '../../components/ui.jsx';
@@ -73,6 +73,10 @@ export function LoginPage() {
         <div className="row-between"><span /><Link to="/quen-mat-khau" className="small strong">Quên mật khẩu?</Link></div>
         <Button type="submit" size="lg" block loading={busy}>Đăng nhập</Button>
       </form>
+      <div className="row wrap small" style={{ justifyContent: 'center', gap: 16 }}>
+        <Link to="/dat-lich" className="strong">Đặt lịch nhanh không cần tài khoản</Link>
+        <Link to="/tra-cuu" className="strong">Tra cứu đơn</Link>
+      </div>
       {SHOW_DEMO_ACCOUNTS && <div className="stack-sm">
         <div className="section-title">Tài khoản dùng thử · mật khẩu 123456</div>
         <div className="demo-accounts">
@@ -88,9 +92,11 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
-  const { register } = useAuth();
+  const { register, user } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', consent: false });
+  // Khách đặt nhanh tạo tài khoản bằng số điện thoại đã đặt: các đơn đã đặt chuyển vào tài khoản
+  const guest = user?.guestTicket ? user : null;
+  const [form, setForm] = useState({ name: guest?.name || '', email: guest?.email || '', phone: guest?.phone || '', password: '', consent: false });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
@@ -100,7 +106,7 @@ export function RegisterPage() {
     setError('');
     try {
       await register(form);
-      navigate('/khach/tao-yeu-cau', { replace: true });
+      navigate(guest ? '/khach/phieu' : '/khach/tao-yeu-cau', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -114,6 +120,7 @@ export function RegisterPage() {
         <p className="muted" style={{ marginTop: 6 }}>Đã có tài khoản? <Link to="/dang-nhap" className="strong">Đăng nhập</Link></p>
       </div>
       <form className="stack" onSubmit={submit} noValidate>
+        {guest && <Alert tone="info">Đăng ký bằng số điện thoại {guest.phone} để lưu đơn {guest.guestTicket} và các đơn đã đặt nhanh vào tài khoản.</Alert>}
         {error && <Alert tone="danger">{error}</Alert>}
         <Field label="Họ và tên" htmlFor="n"><div className="input-group"><User aria-hidden /><input id="n" className="input" autoComplete="name" value={form.name} onChange={set('name')} /></div></Field>
         <Field label="Số điện thoại" htmlFor="p" hint="Dùng để đăng nhập và để kỹ thuật viên liên hệ"><div className="input-group"><Phone aria-hidden /><input id="p" inputMode="tel" className="input" autoComplete="tel" value={form.phone} onChange={set('phone')} /></div></Field>
@@ -122,6 +129,53 @@ export function RegisterPage() {
         <label className="check"><input type="checkbox" checked={form.consent} onChange={set('consent')} /><span>Tôi đồng ý với điều khoản dịch vụ và cho phép IT OnSite xử lý dữ liệu cá nhân để thực hiện yêu cầu hỗ trợ theo Luật Bảo vệ dữ liệu cá nhân.</span></label>
         <Button type="submit" size="lg" block loading={busy}>Tạo tài khoản</Button>
       </form>
+    </AuthShell>
+  );
+}
+
+/** Tra cứu đơn bằng mã đơn và số điện thoại; tra cứu được thì làm tiếp các bước của khách trên đơn đó. */
+export function LookupPage() {
+  const { startGuest } = useAuth();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const [form, setForm] = useState({ ticketId: params.get('ma') || '', phone: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function submit(e) {
+    e.preventDefault();
+    if (!form.ticketId.trim() || !form.phone.trim()) {
+      setError('Vui lòng nhập mã đơn và số điện thoại.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const { user, ticketId } = await api.lookupTicket({ ticketId: form.ticketId.trim(), phone: form.phone.trim() });
+      startGuest(user);
+      navigate(`/khach/phieu/${ticketId}`, { replace: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <AuthShell>
+      <div className="mobile-only"><BrandLogo /></div>
+      <div>
+        <h1>Tra cứu đơn</h1>
+        <p className="muted" style={{ marginTop: 6 }}>Nhập mã đơn và số điện thoại đã dùng khi đặt lịch để xem tiến độ, duyệt báo giá, thanh toán và yêu cầu bảo hành.</p>
+      </div>
+      <form className="stack" onSubmit={submit} noValidate>
+        {error && <Alert tone="danger">{error}</Alert>}
+        <Field label="Mã đơn" htmlFor="ma" hint="Ví dụ: YC-20261113-001"><div className="input-group"><Hash aria-hidden /><input id="ma" className="input" autoComplete="off" value={form.ticketId} onChange={(e) => setForm({ ...form, ticketId: e.target.value })} /></div></Field>
+        <Field label="Số điện thoại" htmlFor="sdt"><div className="input-group"><Phone aria-hidden /><input id="sdt" className="input" type="tel" inputMode="numeric" autoComplete="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div></Field>
+        <Button type="submit" size="lg" block icon={Search} loading={busy}>Tra cứu</Button>
+      </form>
+      <div className="row wrap small" style={{ justifyContent: 'center', gap: 16 }}>
+        <Link to="/dat-lich" className="strong">Đặt lịch nhanh</Link>
+        <Link to="/dang-nhap" className="strong">Đăng nhập</Link>
+      </div>
     </AuthShell>
   );
 }

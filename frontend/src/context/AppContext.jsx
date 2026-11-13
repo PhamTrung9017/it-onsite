@@ -87,6 +87,11 @@ export function AuthProvider({ children }) {
       setActiveRole('KHACH');
       return u;
     },
+    /** Phiên tra cứu một đơn (đặt nhanh hoặc tra cứu bằng mã đơn và số điện thoại). */
+    startGuest(u) {
+      setUser(u);
+      setActiveRole('KHACH');
+    },
     async logout() {
       await api.logout();
       setUser(null);

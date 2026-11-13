@@ -112,6 +112,16 @@ export const httpApi = {
   /* Khách hàng */
   classifyIssue: (body) => post('/classify', body),
   createTicket: (body) => post('/tickets', body),
+  /* Khách đặt nhanh không cần tài khoản; tra cứu đơn bằng mã đơn và số điện thoại */
+  classifyGuest: (body) => send('POST', '/guest/classify', body),
+  createGuestTicket: async (body) => {
+    const data = await send('POST', '/guest/tickets', body);
+    return { user: saveTokens(data), ticket: data.ticket };
+  },
+  lookupTicket: async (body) => {
+    const data = await send('POST', '/guest/lookup', body);
+    return { user: saveTokens(data), ticketId: data.ticketId };
+  },
   listMyTickets: (params) => page('/tickets/mine', params),
   getTicket: (id) => get(t(id)),
   cancelTicket: (id, body) => post(`${t(id)}/cancel`, body),
