@@ -1,4 +1,4 @@
-"""Xử lý cập nhật từ webhook Telegram: liên kết tài khoản, kết nối nhóm chung, nút Nhận/Từ chối việc của kỹ thuật viên."""
+"""Xử lý cập nhật từ webhook Telegram: liên kết tài khoản, kết nối nhóm chung, lệnh xem nhanh, nút Nhận/Từ chối việc của kỹ thuật viên."""
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,10 +6,11 @@ from sqlalchemy.orm import Session
 from app.core.errors import ApiError
 from app.domain.rules import BusinessConfig
 from app.models import Setting, User
-from app.services import account, technician, telegram
+from app.services import account, technician, telegram, telegram_commands
 from app.services.common import audit, utcnow
 
 GROUP_COMMAND = "/ketnoinhom"
+QUICK_COMMANDS = {"viec", "tongquan", "trogiup", "help"}
 START_GUIDE = (
     "Chào bạn, đây là bot thông báo của IT OnSite.\n"
     'Để nhận thông báo: đăng nhập IT OnSite, bấm "Kết nối Telegram" (trang Thông báo hoặc Hồ sơ), '
@@ -39,6 +40,7 @@ def _handle_message(db: Session, message: dict) -> None:
     if not chat_id:
         return
     private = chat.get("type", "private") == "private"
+    command = telegram_commands.command_of(text)
     if text.startswith("/start ") and private:
         bound = account.bind_telegram(db, text.split(maxsplit=1)[1], chat_id)
         if bound:
@@ -51,6 +53,17 @@ def _handle_message(db: Session, message: dict) -> None:
         _reply(chat_id, START_GUIDE)
     elif text.split("@")[0] == GROUP_COMMAND and chat.get("type") in ("group", "supergroup"):
         _connect_group(db, message, chat_id)
+    elif command in QUICK_COMMANDS or (private and text):
+        _quick_command(db, message, chat_id, private, command)
+
+
+def _quick_command(db: Session, message: dict, chat_id: str, private: bool, command: str | None) -> None:
+    """Lệnh /viec, /tongquan, /trogiup (trong tin riêng hoặc nhóm); tin khác trong tin riêng thì gửi danh sách lệnh."""
+    user = _user_of(db, (message.get("from") or {}).get("id"))
+    if user is None or user.locked:
+        _reply(chat_id, START_GUIDE if private else "Tài khoản Telegram này chưa liên kết với IT OnSite.")
+        return
+    _reply(chat_id, telegram_commands.answer(db, user, command if command in QUICK_COMMANDS else "trogiup"))
 
 
 def _connect_group(db: Session, message: dict, chat_id: str) -> None:

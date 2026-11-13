@@ -1,34 +1,14 @@
 """Telegram: liên kết tài khoản, kết nối nhóm chung, nút Nhận/Từ chối việc của kỹ thuật viên."""
 
-import pytest
 from sqlalchemy import select
 
-from app.core.config import get_settings
 from app.db import SessionLocal
 from app.models import OutboxMessage
 from app.services import telegram
 from tests.conftest import Api
 from tests.test_flow import create_ticket, login_tech, receive
 
-SECRET = "bi-mat"
 KTV_CHAT, ADMIN_CHAT, GROUP_CHAT = "111", "999", "-100123"
-
-
-@pytest.fixture
-def bot(client, monkeypatch):
-    settings = get_settings()
-    monkeypatch.setattr(settings, "telegram_bot_token", "token")
-    monkeypatch.setattr(settings, "telegram_bot_username", "itonsite_bot")
-    monkeypatch.setattr(settings, "telegram_webhook_secret", SECRET)
-    calls = []
-    monkeypatch.setattr(telegram, "call", lambda method, payload: calls.append((method, payload)))
-
-    def send(update: dict) -> None:
-        response = client.post("/api/v1/telegram/webhook", json=update, headers={"X-Telegram-Bot-Api-Secret-Token": SECRET})
-        assert response.status_code == 200, response.text
-
-    send.calls = calls
-    return send
 
 
 def link(bot, api: Api, chat_id: str) -> None:
