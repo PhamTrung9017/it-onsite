@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BarChart3, Bell, Boxes, CalendarCheck, ClipboardList, Cog, CreditCard, FileClock, Home, LogOut, Menu, PlusCircle,
+  Activity, BarChart3, Bell, Boxes, CalendarCheck, ClipboardList, Cog, CreditCard, FileClock, Home, LogOut, Menu, PlusCircle,
   RotateCcw, ShieldCheck, Tags, User, UserCog, Users, Wrench, LayoutGrid, Repeat,
 } from 'lucide-react';
 import { ROLE_HOME, ROLE_LABEL, useAuth, useNotifications, useToast } from '../context/AppContext.jsx';
@@ -214,6 +214,7 @@ const SIDE = {
     { to: '/quan-tri/tai-khoan', label: 'Tài khoản và phân quyền', icon: UserCog },
     { to: '/quan-tri/cau-hinh', label: 'Cấu hình tham số', icon: Cog },
     { to: '/quan-tri/nhat-ky', label: 'Nhật ký hệ thống', icon: FileClock },
+    { to: '/quan-tri/tinh-trang', label: 'Tình trạng hệ thống', icon: Activity },
     { to: '/quan-tri/thong-bao', label: 'Thông báo', icon: Bell },
   ],
 };

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentUser, Db, Page
 from app.schemas import InternalUserBody, PartBody, RolesBody, ServiceBody, TechnicianBody
-from app.services import admin, reports
+from app.services import admin, reports, system_status
 from app.services.present import category_json, iso, tech_json, user_json
 
 from .catalog import part_json, service_json
@@ -81,6 +81,11 @@ def create_user(body: InternalUserBody, user: CurrentUser, db: Db) -> dict:
     created = admin.create_internal_user(db, user, body.name, body.email, body.phone, body.roles)
     db.commit()
     return user_json(created)
+
+
+@router.get("/system-status")
+def get_system_status(user: CurrentUser, db: Db) -> dict:
+    return system_status.system_status(db, user)
 
 
 @router.post("/demo-data/reset")
