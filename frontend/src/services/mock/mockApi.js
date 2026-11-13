@@ -9,7 +9,7 @@ import { classifyIssue, redactPersonalData } from '../../lib/classifier.js';
 import { buildVietQR, sanitizeContent } from '../../lib/vietqr.js';
 import { ApiError } from '../apiError.js';
 
-const KEY = 'itonsite.mock.v2';
+const KEY = 'itonsite.mock.v3';
 const SESSION_KEY = 'itonsite.session.v1';
 const DAY = 86400000;
 /** Một trang của danh sách như API phân trang của backend. */
@@ -35,7 +35,7 @@ function load() {
   } catch {
     cache = null;
   }
-  if (!cache || cache.version !== 2) {
+  if (!cache || cache.version !== 3) {
     cache = buildSeed();
     persist();
   }

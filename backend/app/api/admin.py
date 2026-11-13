@@ -83,6 +83,13 @@ def create_user(body: InternalUserBody, user: CurrentUser, db: Db) -> dict:
     return user_json(created)
 
 
+@router.post("/demo-data/reset")
+def reset_demo_data(user: CurrentUser, db: Db) -> dict:
+    admin.reload_demo_data(db, user)
+    db.commit()
+    return {"ok": True}
+
+
 @router.put("/config")
 def save_config(body: dict, user: CurrentUser, db: Db) -> dict:
     config = admin.save_config(db, user, body)
