@@ -3,14 +3,15 @@
 Chỉ đọc dữ liệu, không thay đổi phiếu. Tin trả lời không ghi số điện thoại, địa chỉ của khách nên dùng được cả trong nhóm chung.
 """
 
-from datetime import datetime, time, timedelta
+from collections import Counter
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.domain.status import STATUS_LABEL, DepositStatus, Status
-from app.models import Assignment, Deposit, Payment, Ticket, TicketHistory, User
+from app.models import Assignment, Deposit, Payment, Technician, Ticket, TicketHistory, User
 from app.services import telegram
 from app.services.common import money, tech_of_user, utcnow
 from app.services.reports import _completed_between, _forfeited_between, _revenue
@@ -86,15 +87,12 @@ def _count(db: Session, query) -> int:
     return db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
 
-def overview_today(db: Session, user: User) -> str:
-    if not MANAGERS & set(user.roles):
-        return "Lệnh /tongquan dành cho quản trị viên và điều phối viên."
-    now = utcnow()
-    start, end = _today(now)
+def _by_status(db: Session, *statuses: Status) -> int:
+    return _count(db, select(Ticket.id).where(Ticket.status.in_(statuses)))
 
-    def by_status(*statuses: Status) -> int:
-        return _count(db, select(Ticket.id).where(Ticket.status.in_(statuses)))
 
+def _day_stats(db: Session, start: datetime, end: datetime) -> tuple[int, list[Ticket], int, int]:
+    """Phiếu tạo mới, phiếu hoàn tất, số phiếu hủy và doanh thu trong khoảng [start, end)."""
     created = _count(db, select(Ticket.id).where(Ticket.created_at >= start, Ticket.created_at < end))
     completed = _completed_between(db, start, end)
     cancelled = _count(
@@ -103,19 +101,61 @@ def overview_today(db: Session, user: User) -> str:
         .where(TicketHistory.status == Status.DA_HUY, TicketHistory.at >= start, TicketHistory.at < end)
         .distinct(),
     )
-    revenue = _revenue(completed, _forfeited_between(db, start, end))
+    return created, completed, cancelled, _revenue(completed, _forfeited_between(db, start, end))
+
+
+def _backlog(db: Session) -> str:
+    return (
+        f"Chờ tiếp nhận: {_by_status(db, Status.MOI)} · Chờ phân công: {_by_status(db, Status.DA_TIEP_NHAN)}"
+        f" · Chờ KTV nhận: {_by_status(db, Status.DA_PHAN_CONG)}"
+    )
+
+
+def overview_today(db: Session, user: User) -> str:
+    if not MANAGERS & set(user.roles):
+        return "Lệnh /tongquan dành cho quản trị viên và điều phối viên."
+    now = utcnow()
+    start, end = _today(now)
+    created, completed, cancelled, revenue = _day_stats(db, start, end)
     deposits = _count(db, select(Deposit.ticket_id).where(Deposit.status.in_([DepositStatus.CHO_XAC_NHAN, DepositStatus.CHO_HOAN])))
     payments = _count(db, select(Payment.ticket_id).where(Payment.status.in_(WAITING_PAYMENT)))
     return "\n".join(
         [
             f"Tổng quan hôm nay {start.strftime('%d/%m')} (lúc {telegram.local_time(now)[:5]}):",
             f"• Phiếu mới tạo: {created}",
-            f"• Chờ tiếp nhận: {by_status(Status.MOI)} · Chờ phân công: {by_status(Status.DA_TIEP_NHAN)}"
-            f" · Chờ KTV nhận: {by_status(Status.DA_PHAN_CONG)}",
-            f"• Đang xử lý: {by_status(*IN_PROGRESS)}",
+            f"• {_backlog(db)}",
+            f"• Đang xử lý: {_by_status(db, *IN_PROGRESS)}",
             f"• Hoàn tất hôm nay: {len(completed)} · Hủy hôm nay: {cancelled}",
             f"• Doanh thu hôm nay: {money(revenue)}",
             f"• Chờ đối soát: {deposits} phí giữ lịch, {payments} khoản thanh toán",
+        ]
+    )
+
+
+def daily_summary(db: Session, day: date) -> str:
+    """Tổng kết cuối ngày gửi vào nhóm chung (không ghi thông tin khách)."""
+    tz = get_settings().tz
+    start = datetime.combine(day, time.min, tzinfo=tz)
+    end = start + timedelta(days=1)
+    created, completed, cancelled, revenue = _day_stats(db, start, end)
+    per_tech = Counter(db.get(Technician, t.assignment.tech_id).user.name for t in completed if t.assignment)
+    techs = ", ".join(f"{name} {count}" for name, count in per_tech.most_common()) or "chưa có"
+    tomorrow = _count(
+        db,
+        select(Ticket.id)
+        .join(Assignment, Assignment.ticket_id == Ticket.id)
+        .where(Ticket.status.in_([Status.DA_PHAN_CONG, Status.KTV_DA_NHAN]))
+        .where(Assignment.appointment_at >= end, Assignment.appointment_at < end + timedelta(days=1))
+        .distinct(),
+    )
+    return "\n".join(
+        [
+            f"Tổng kết ngày {day.strftime('%d/%m')}:",
+            f"• Phiếu mới tạo: {created} · Hoàn tất: {len(completed)} · Hủy: {cancelled}",
+            f"• Doanh thu: {money(revenue)}",
+            f"• Hoàn tất theo kỹ thuật viên: {techs}",
+            f"• Còn tồn: {_backlog(db)} · Đang xử lý: {_by_status(db, *IN_PROGRESS)}",
+            f"• Ngày {end.strftime('%d/%m')}: {tomorrow} lịch hẹn đã phân công",
         ]
     )
 

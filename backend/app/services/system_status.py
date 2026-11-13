@@ -25,7 +25,10 @@ JOB_NAMES = {
     "sweep_overdue_assignments": "Thu hồi phân công quá hạn",
     "sweep_unpaid": "Hủy phiếu quá hạn trả phí giữ lịch",
     "process_outbox": "Gửi thông báo trong hàng đợi",
+    "send_reminders": "Nhắc kỹ thuật viên trước giờ hẹn",
+    "send_daily_summary": "Tổng kết cuối ngày",
 }
+SCHEDULE_INTERVAL = 60
 
 
 def _check(key: str, name: str, state: str, detail: str) -> dict:
@@ -44,7 +47,7 @@ def _jobs() -> dict:
     settings = get_settings()
     if not settings.background_jobs:
         return _check("jobs", "Tác vụ nền", "off", "Đang tắt (BACKGROUND_JOBS=false)")
-    limit = timedelta(seconds=2 * max(settings.sweep_interval_seconds, settings.outbox_interval_seconds) + 30)
+    limit = timedelta(seconds=2 * max(settings.sweep_interval_seconds, settings.outbox_interval_seconds, SCHEDULE_INTERVAL) + 30)
     now = utcnow()
     late = [label for job, label in JOB_NAMES.items() if job not in LAST_RUN or now - LAST_RUN[job] > limit]
     if late:
