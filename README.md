@@ -55,12 +55,12 @@ Cách nhanh nhất là Docker Compose:
 
 ```bash
 cd infra
-cp .env.example .env        # điền DB_PASSWORD, JWT_SECRET, CREDENTIAL_KEY; DEMO_ACCOUNTS=true nếu dùng dữ liệu trình diễn
+cp .env.example .env        # điền DB_PASSWORD, JWT_SECRET, CREDENTIAL_KEY
 docker compose up -d --build
 docker compose exec backend python -m app.seed demo
 ```
 
-Mở http://localhost:8080. Tài khoản dùng thử: `khach@demo.vn`, `ktv@demo.vn`, `dpv@demo.vn`, `qtv@demo.vn`, mật khẩu `123456`.
+Mở http://localhost:8080.
 
 Bản chạy thật triển khai trên Render (gói miễn phí) với cơ sở dữ liệu ở Neon, xem mục "Triển khai lên Render" trong `infra/README.md`.
 

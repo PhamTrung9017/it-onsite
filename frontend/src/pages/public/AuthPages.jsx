@@ -1,19 +1,10 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Hash, KeyRound, Lock, Mail, Phone, Search, User } from 'lucide-react';
-import { ROLE_HOME, ROLE_LABEL, useAuth } from '../../context/AppContext.jsx';
-import { api, usingMockApi } from '../../services/api.js';
+import { ROLE_HOME, useAuth } from '../../context/AppContext.jsx';
+import { api } from '../../services/api.js';
 import { Alert, Button, Field } from '../../components/ui.jsx';
 import { BrandLogo } from '../../components/layouts.jsx';
-
-const SHOW_DEMO_ACCOUNTS = usingMockApi || import.meta.env.VITE_DEMO_ACCOUNTS === 'true';
-
-const DEMO = [
-  { role: 'KHACH', email: 'khach@demo.vn' },
-  { role: 'KTV', email: 'ktv@demo.vn' },
-  { role: 'DPV', email: 'dpv@demo.vn' },
-  { role: 'QTV', email: 'qtv@demo.vn' },
-];
 
 function AuthShell({ children }) {
   return (
@@ -77,16 +68,6 @@ export function LoginPage() {
         <Link to="/dat-lich" className="strong">Đặt lịch nhanh không cần tài khoản</Link>
         <Link to="/tra-cuu" className="strong">Tra cứu đơn</Link>
       </div>
-      {SHOW_DEMO_ACCOUNTS && <div className="stack-sm">
-        <div className="section-title">Tài khoản dùng thử · mật khẩu 123456</div>
-        <div className="demo-accounts">
-          {DEMO.map((d) => (
-            <button key={d.role} type="button" onClick={() => setForm({ identifier: d.email, password: '123456' })}>
-              <div className="r">{ROLE_LABEL[d.role]}</div><div className="e">{d.email}</div>
-            </button>
-          ))}
-        </div>
-      </div>}
     </AuthShell>
   );
 }

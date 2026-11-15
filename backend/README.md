@@ -13,7 +13,7 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 cp .env.example .env               # điền DATABASE_URL, JWT_SECRET, CREDENTIAL_KEY
 alembic upgrade head
-python -m app.seed demo            # dữ liệu trình diễn, mật khẩu mọi tài khoản: 123456
+python -m app.seed demo            # dữ liệu trình diễn
 uvicorn app.main:app --reload
 ```
 

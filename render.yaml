@@ -19,10 +19,8 @@ services:
         generateValue: true
       - key: CREDENTIAL_KEY
         generateValue: true
-      # true: lần chạy đầu nạp dữ liệu trình diễn và hiện nút đăng nhập nhanh tài khoản dùng thử
+      # true: lần chạy đầu nạp dữ liệu trình diễn
       - key: DEMO_DATA
-        value: "true"
-      - key: VITE_DEMO_ACCOUNTS
         value: "true"
       - key: GEMINI_API_KEY
         sync: false
