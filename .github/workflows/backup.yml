@@ -1,7 +1,5 @@
 name: Sao lưu CSDL
 
-# NFR-13: sao lưu CSDL bản chạy thật mỗi ngày lúc 02:00 (giờ Việt Nam), giữ 7 bản gần nhất, khôi phục thử mỗi lần sao lưu.
-# Cần 2 secret của repo: BACKUP_DATABASE_URL (chuỗi kết nối Neon) và BACKUP_PASSPHRASE (mật khẩu mã hóa bản sao lưu).
 on:
   schedule:
     - cron: "0 19 * * *"

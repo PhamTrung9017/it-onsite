@@ -1,5 +1,3 @@
-# Triển khai lên Render (gói miễn phí) bằng Blueprint: New → Blueprint → chọn repo này.
-# Cơ sở dữ liệu PostgreSQL đặt ở Neon, chuỗi kết nối điền vào DATABASE_URL.
 services:
   - type: web
     name: it-onsite
@@ -19,7 +17,6 @@ services:
         generateValue: true
       - key: CREDENTIAL_KEY
         generateValue: true
-      # true: lần chạy đầu nạp dữ liệu trình diễn
       - key: DEMO_DATA
         value: "true"
       - key: GEMINI_API_KEY
