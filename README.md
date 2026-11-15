@@ -9,11 +9,11 @@ Giảng viên hướng dẫn: Vũ Đình Long
 
 IT OnSite là ứng dụng web giúp một dịch vụ cài đặt phần mềm, sửa chữa và bảo trì máy tính tận nơi quản lý toàn bộ vòng đời một yêu cầu hỗ trợ:
 
-1. Khách đặt lịch và mô tả sự cố; AI gợi ý loại sự cố và dịch vụ phù hợp.
-2. Điều phối viên phân công kỹ thuật viên theo kỹ năng, khu vực và lịch trống.
-3. Kỹ thuật viên khảo sát, lập báo giá tại chỗ; khách duyệt báo giá trước khi làm.
+1. Khách đặt lịch, mô tả sự cố và chuyển phí giữ lịch; AI gợi ý loại sự cố và dịch vụ phù hợp. Khách đặt bằng tài khoản hoặc đặt nhanh không cần tài khoản, tra cứu đơn bằng mã đơn và số điện thoại.
+2. Điều phối viên xác nhận phí giữ lịch, tiếp nhận phiếu và phân công kỹ thuật viên theo kỹ năng, khu vực và lịch trống.
+3. Kỹ thuật viên nhận việc trên web hoặc Telegram, khảo sát và lập báo giá tại chỗ; khách duyệt báo giá trước khi làm.
 4. Kỹ thuật viên cập nhật tiến độ kèm ảnh trước và sau; khách nghiệm thu.
-5. Thanh toán tiền mặt hoặc chuyển khoản VietQR; phát hành phiếu bảo hành; khách đánh giá dịch vụ.
+5. Thanh toán tiền mặt hoặc chuyển khoản VietQR (đã trừ phí giữ lịch); phát hành phiếu bảo hành; khách đánh giá dịch vụ.
 
 Đơn vị đặt hàng: dịch vụ Cài Win Dạo (TP. Hồ Chí Minh).
 
@@ -31,7 +31,7 @@ IT OnSite là ứng dụng web giúp một dịch vụ cài đặt phần mềm,
 |---|---|
 | Giao diện | React 18, Vite, React Router |
 | Backend | Python 3.12, FastAPI, SQLAlchemy, Alembic |
-| Cơ sở dữ liệu | PostgreSQL 16 |
+| Cơ sở dữ liệu | PostgreSQL (16 khi chạy Docker Compose và CI, 18 trên Neon) |
 | AI phân loại sự cố | Gemini API |
 | Thông báo | Telegram Bot API, email (SMTP hoặc Google Apps Script) |
 | Kiểm thử | Pytest, Vitest, Playwright |

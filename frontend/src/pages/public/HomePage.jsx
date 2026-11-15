@@ -9,11 +9,11 @@ import { Badge, ButtonLink, Money } from '../../components/ui.jsx';
 import { money } from '../../lib/format.js';
 
 const STEPS = [
-  { icon: MessageSquareText, title: 'Mô tả sự cố', text: 'Chọn thiết bị, mô tả vấn đề, đính kèm ảnh. Hệ thống gợi ý loại sự cố và dịch vụ phù hợp.' },
-  { icon: UserCheck, title: 'Phân công kỹ thuật viên', text: 'Điều phối viên chọn kỹ thuật viên đúng chuyên môn, phụ trách khu vực của bạn và còn trống lịch.' },
+  { icon: MessageSquareText, title: 'Đặt lịch, giữ lịch', text: 'Mô tả sự cố, đính kèm ảnh, chọn giờ hẹn rồi chuyển phí giữ lịch. Đặt nhanh không cần tài khoản, tra cứu bằng mã đơn và số điện thoại.' },
+  { icon: UserCheck, title: 'Phân công kỹ thuật viên', text: 'Điều phối viên xác nhận phí giữ lịch, chọn kỹ thuật viên đúng chuyên môn, phụ trách khu vực của bạn và còn trống lịch.' },
   { icon: ClipboardCheck, title: 'Khảo sát và báo giá', text: 'Kỹ thuật viên kiểm tra tại chỗ, gửi báo giá từng hạng mục. Bạn duyệt toàn bộ, một phần hoặc từ chối.' },
   { icon: Wrench, title: 'Thực hiện', text: 'Chỉ làm các hạng mục bạn đã duyệt. Có ảnh trước và sau khi xử lý để đối chiếu.' },
-  { icon: Receipt, title: 'Nghiệm thu, thanh toán', text: 'Bạn kiểm tra kết quả rồi thanh toán tiền mặt hoặc quét mã VietQR.' },
+  { icon: Receipt, title: 'Nghiệm thu, thanh toán', text: 'Bạn kiểm tra kết quả rồi thanh toán tiền mặt hoặc quét mã VietQR; phí giữ lịch được trừ vào tổng tiền.' },
   { icon: ShieldCheck, title: 'Bảo hành, đánh giá', text: 'Phiếu bảo hành điện tử theo từng hạng mục. Gửi yêu cầu bảo hành ngay trên hệ thống.' },
 ];
 
