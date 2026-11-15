@@ -1,10 +1,4 @@
-/**
- * Dịch vụ gửi email cho IT OnSite bằng Google Apps Script.
- * Backend gọi qua HTTPS (EMAIL_RELAY_URL) khi máy chủ không mở được cổng SMTP.
- *
- * Cài đặt: Project Settings → Script Properties → thêm RELAY_SECRET (trùng EMAIL_RELAY_SECRET của backend).
- * Triển khai: Deploy → New deployment → Web app; Execute as: Me; Who has access: Anyone.
- */
+
 const SENDER_NAME = 'IT OnSite';
 
 function doPost(e) {
