@@ -4,7 +4,6 @@ Mỗi mục có trạng thái ok (chạy tốt), warn (cần chú ý), error (l�
 mỗi mục tối đa vài giây, không gửi tin hay email thật.
 """
 
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -39,8 +38,7 @@ def _database(db: Session) -> dict:
     started = time.perf_counter()
     db.execute(text("SELECT 1"))
     ms = (time.perf_counter() - started) * 1000
-    version = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    return _check("database", "Cơ sở dữ liệu", "ok", f"Kết nối tốt ({ms:.0f} ms), phiên bản cấu trúc {version}")
+    return _check("database", "Cơ sở dữ liệu", "ok", f"Kết nối tốt ({ms:.0f} ms)")
 
 
 def _jobs() -> dict:
@@ -140,5 +138,4 @@ def system_status(db: Session, user: User) -> dict:
         remote = [pool.submit(check) for check in (_telegram_bot, _email, _gemini)]
         local = [_database(db), _jobs(), _outbox(db), _telegram_group(db)]
         bot, email, ai = (future.result() for future in remote)
-    commit = os.environ.get("RENDER_GIT_COMMIT", "")[:7]
-    return {"checkedAt": utcnow(), "version": commit, "checks": [local[0], local[1], local[2], bot, local[3], email, ai]}
+    return {"checkedAt": utcnow(), "checks": [local[0], local[1], local[2], bot, local[3], email, ai]}

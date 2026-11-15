@@ -390,7 +390,7 @@ export function SystemStatusPage() {
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   const problems = data.checks.filter((c) => c.state === 'error' || c.state === 'warn').length;
-  const sub = `Kiểm tra lúc ${formatDateTime(data.checkedAt)}${data.version ? ` · bản ${data.version}` : ''}`;
+  const sub = `Kiểm tra lúc ${formatDateTime(data.checkedAt)}`;
   return (
     <>
       <PageHead title="Tình trạng hệ thống" sub={sub} actions={<Button variant="outline" icon={RefreshCw} loading={checking} onClick={recheck}>Kiểm tra lại</Button>} />

@@ -1179,7 +1179,6 @@ export const mockApi = {
     const off = (key, name) => ({ key, name, state: 'off', detail: 'Bản giả lập không kết nối dịch vụ bên ngoài' });
     return {
       checkedAt: new Date().toISOString(),
-      version: '',
       checks: [
         { key: 'database', name: 'Cơ sở dữ liệu', state: 'ok', detail: `Dữ liệu giả lập trong trình duyệt, ${db.tickets.length} phiếu` },
         off('jobs', 'Tác vụ nền'),

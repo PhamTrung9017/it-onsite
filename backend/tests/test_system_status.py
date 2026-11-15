@@ -4,8 +4,6 @@ from datetime import timedelta
 
 import httpx
 import pytest
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 
 from app.core.config import get_settings
 from app.services import system_status
@@ -45,8 +43,7 @@ def test_status_without_external_services(qtv, monkeypatch):
         monkeypatch.setattr(settings, field, "")
     monkeypatch.setattr(settings, "background_jobs", False)
     result = states(qtv)
-    head = ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
-    assert result["database"][0] == "ok" and result["database"][1].endswith(f"phiên bản cấu trúc {head}")
+    assert result["database"][0] == "ok" and result["database"][1].startswith("Kết nối tốt")
     assert {result[k][0] for k in ("jobs", "telegram", "group", "email", "ai")} == {"off"}
     assert result["outbox"][0] in ("ok", "warn")
 
