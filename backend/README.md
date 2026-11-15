@@ -92,7 +92,7 @@ Lỗi nghiệp vụ trả về `{"detail": "<thông báo tiếng Việt>"}` vớ
 ## Bảo mật
 
 - Mọi endpoint trừ đăng ký, đăng nhập, làm mới phiên, quên mật khẩu, đặt nhanh, tra cứu đơn, danh mục và kiểm tra trạng thái đều cần đăng nhập; quyền theo vai trò kiểm tra ở backend (NFR-05). `tests/test_security.py` thử toàn bộ endpoint với từng vai trò.
-- Đặt nhanh và tra cứu đơn trả về phiên tra cứu: access token 120 phút, không có refresh token, chỉ gọi được các endpoint của khách trên đơn đó, thông báo và bảo hành của đơn đó (`api/deps.py`). Tra cứu sai quá 10 lần trong 15 phút từ một địa chỉ IP thì bị chặn tạm thời (429).
+- Đặt nhanh và tra cứu đơn trả về phiên tra cứu: access token 120 phút, không có refresh token, chỉ gọi được các endpoint của khách trên đơn đó, thông báo và bảo hành của đơn đó (`api/deps.py`). Tra cứu bị chặn tạm thời 15 phút (429) khi: quá 10 lần từ một địa chỉ IP, sai 5 lần với cùng một mã đơn, hoặc sai 10 lần với cùng một số điện thoại – đổi địa chỉ IP không né được hai giới hạn sau.
 - Truy vấn qua ORM có tham số; nội dung người dùng nhập được trả về dạng chữ thuần, giao diện React không chèn HTML; ảnh tải lên chỉ nhận JPEG, PNG, WebP đúng chữ ký tệp (NFR-09).
 - Phản hồi có `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`; dữ liệu API không lưu bộ nhớ đệm. Giao diện qua nginx có thêm Content-Security-Policy (`frontend/security-headers.conf`).
 - Khi `APP_ENV=production`, backend không khởi động nếu `JWT_SECRET`, `CREDENTIAL_KEY` là giá trị mặc định hoặc ngắn hơn 32 ký tự.

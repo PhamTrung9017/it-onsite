@@ -100,6 +100,24 @@ def test_lookup_by_ticket_code_and_phone(client):
     assert lookup(client, ticket["id"], GUEST_PHONE).status_code == 429, "chặn dò mã đơn"
 
 
+def test_lookup_is_limited_per_ticket_and_per_phone(client, monkeypatch):
+    """Đổi địa chỉ IP không né được giới hạn: sai nhiều lần với một mã đơn hoặc một số điện thoại thì bị chặn."""
+    monkeypatch.setattr(guest, "LOOKUP_LIMIT", 1000)
+    ticket, _ = book(client)
+    for i in range(guest.TICKET_FAIL_LIMIT):
+        assert lookup(client, ticket["id"], f"09000000{i:02d}").status_code == 404
+    assert lookup(client, ticket["id"], GUEST_PHONE).status_code == 429, "dò số điện thoại của một mã đơn"
+
+    guest._hits.clear()
+    for i in range(guest.PHONE_FAIL_LIMIT):
+        assert lookup(client, f"YC-20990101-{i:03d}", GUEST_PHONE).status_code == 404
+    assert lookup(client, ticket["id"], GUEST_PHONE).status_code == 429, "dò mã đơn của một số điện thoại"
+    assert lookup(client, ticket["id"], "0912345678").status_code == 404, "số điện thoại khác vẫn tra cứu bình thường"
+
+    guest._hits.clear()
+    assert lookup(client, ticket["id"], GUEST_PHONE).status_code == 200
+
+
 def test_guest_cannot_login_and_registers_with_same_phone(client):
     ticket, _ = book(client)
     assert client.post("/api/v1/auth/login", json={"identifier": GUEST_PHONE, "password": ""}).status_code in (401, 422)

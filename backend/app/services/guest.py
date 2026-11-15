@@ -24,20 +24,28 @@ from app.services.present import user_json
 
 TOKEN_MINUTES = 120
 LOOKUP_LIMIT, LOOKUP_WINDOW = 10, 15 * 60
+# Tra cứu sai theo từng mã đơn và từng số điện thoại (không phụ thuộc địa chỉ IP, vốn có thể bị giả qua header)
+TICKET_FAIL_LIMIT, PHONE_FAIL_LIMIT = 5, 10
+LOOKUP_BLOCKED = "Bạn tra cứu sai quá nhiều lần. Vui lòng thử lại sau 15 phút."
 CLASSIFY_LIMIT, CLASSIFY_WINDOW = 20, 60 * 60
 BOOKING_LIMIT, BOOKING_WINDOW = 10, 60 * 60
 _hits: dict[str, deque] = defaultdict(deque)
 
 
-def throttle(key: str, limit: int, window: int, message: str) -> None:
-    """Giới hạn số lần trong một khoảng thời gian theo khóa (địa chỉ IP); lưu trong bộ nhớ tiến trình."""
+def _recent(key: str, window: int) -> deque:
     now = time.monotonic()
     hits = _hits[key]
     while hits and now - hits[0] > window:
         hits.popleft()
+    return hits
+
+
+def throttle(key: str, limit: int, window: int, message: str) -> None:
+    """Giới hạn số lần trong một khoảng thời gian theo khóa (địa chỉ IP); lưu trong bộ nhớ tiến trình."""
+    hits = _recent(key, window)
     if len(hits) >= limit:
         raise ApiError(message, 429)
-    hits.append(now)
+    hits.append(time.monotonic())
 
 
 def _customer(db: Session, name: str, phone: str, email: str) -> User:
@@ -105,13 +113,21 @@ def create_ticket(db: Session, body) -> tuple[Ticket, User]:
 
 
 def lookup(db: Session, ticket_id: str, phone: str, client: str) -> tuple[Ticket, User]:
-    throttle(f"tra-cuu:{client}", LOOKUP_LIMIT, LOOKUP_WINDOW, "Bạn tra cứu sai quá nhiều lần. Vui lòng thử lại sau 15 phút.")
-    ticket = db.get(Ticket, ticket_id.strip().upper())
+    throttle(f"tra-cuu:{client}", LOOKUP_LIMIT, LOOKUP_WINDOW, LOOKUP_BLOCKED)
+    ticket_id = ticket_id.strip().upper()
     try:
         phone = validate_phone(phone)
     except ApiError:
         phone = ""
+    failures = [(f"tra-cuu-ma:{ticket_id}", TICKET_FAIL_LIMIT)]
+    if phone:
+        failures.append((f"tra-cuu-sdt:{phone}", PHONE_FAIL_LIMIT))
+    if any(len(_recent(key, LOOKUP_WINDOW)) >= limit for key, limit in failures):
+        raise ApiError(LOOKUP_BLOCKED, 429)
+    ticket = db.get(Ticket, ticket_id)
     if ticket is None or not phone or phone not in (ticket.customer.phone, ticket.contact_phone) or ticket.customer.locked:
+        for key, _ in failures:
+            _hits[key].append(time.monotonic())
         raise ApiError("Không tìm thấy đơn với mã đơn và số điện thoại này.", 404)
     return ticket, ticket.customer
 
