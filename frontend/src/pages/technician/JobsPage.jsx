@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import { CalendarCheck, Hourglass, MapPin } from 'lucide-react';
 import { useLoad, useNow } from '../../hooks/useApi.js';
 import { api } from '../../services/api.js';
-import { Card, Empty, ErrorState, Loading, PageHead, Segmented, StatusBadge } from '../../components/ui.jsx';
+import { Badge, Card, Empty, ErrorState, Loading, PageHead, Segmented, StatusBadge } from '../../components/ui.jsx';
 import { formatTime, relativeDay } from '../../lib/format.js';
-import { STATUS } from '../../lib/ticketStatus.js';
+import { STATUS, isOverdue } from '../../lib/ticketStatus.js';
 import { wardLabel } from '../../lib/wards.js';
 
 function Countdown({ deadline, assignedAt }) {
@@ -36,6 +36,7 @@ export function JobCard({ job }) {
           <h3>{job.category?.name}</h3>
           <StatusBadge status={job.status} />
         </div>
+        {isOverdue(job) && <Badge tone="danger" plain>Quá giờ hẹn chưa check-in</Badge>}
         <div className="small">{job.customer?.name} · {job.device?.brand} {job.device?.model}</div>
         <div className="addr"><MapPin aria-hidden />{job.address}, phường {wardLabel(job.ward)}</div>
         {pending && <Countdown deadline={job.assignment.deadline} assignedAt={job.assignment.assignedAt} />}

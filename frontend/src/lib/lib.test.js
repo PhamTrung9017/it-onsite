@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildVietQR, crc16, sanitizeContent } from './vietqr.js';
-import { canTransition, STATUS } from './ticketStatus.js';
+import { canTransition, isOverdue, nextAction, STATUS } from './ticketStatus.js';
 import {
   amountDue, canComplete, cancellationPolicy, depositDeadline, hasConflict, offDuty, rankTechnicians, reviewPolicy, validateReview, validateSchedule,
   reportPeriod, reschedulePolicy, validateSlot, warrantyStatus,
@@ -180,5 +180,25 @@ describe('UC21 kỳ báo cáo', () => {
     const p = reportPeriod({ from: '2026-10-05', to: '2026-10-11' });
     expect(p.kind).toBe('range');
     expect([p.start, p.end, p.prevStart]).toEqual([new Date(2026, 9, 5), new Date(2026, 9, 12), new Date(2026, 8, 28)]);
+  });
+});
+
+describe('Bước tiếp theo, quá giờ hẹn', () => {
+  const now = new Date(2026, 10, 15, 15, 0).getTime();
+  const at = (h) => new Date(2026, 10, 15, h, 0).toISOString();
+
+  it('cho biết ai làm bước tiếp theo', () => {
+    expect(nextAction({ status: STATUS.MOI, deposit: { status: 'CHO_THANH_TOAN' } }).actor).toBe('Khách hàng');
+    expect(nextAction({ status: STATUS.MOI, deposit: { status: 'CHO_XAC_NHAN' } }).actor).toBe('Điều phối viên');
+    expect(nextAction({ status: STATUS.CHO_THANH_TOAN, payment: { status: 'CHO_XAC_NHAN' } }).actor).toBe('Điều phối viên');
+    expect(nextAction({ status: STATUS.CHO_THANH_TOAN, payment: { status: 'CHO_THANH_TOAN', method: 'TIEN_MAT' } }).actor).toBe('Kỹ thuật viên');
+    expect(nextAction({ status: STATUS.HOAN_TAT })).toBeNull();
+  });
+
+  it('chỉ đánh dấu quá giờ hẹn khi kỹ thuật viên chưa check-in', () => {
+    expect(isOverdue({ status: STATUS.KTV_DA_NHAN, assignment: { appointmentAt: at(14) } }, now)).toBe(true);
+    expect(isOverdue({ status: STATUS.MOI, slotStart: at(14) }, now)).toBe(true);
+    expect(isOverdue({ status: STATUS.KTV_DA_NHAN, assignment: { appointmentAt: at(16) } }, now)).toBe(false);
+    expect(isOverdue({ status: STATUS.DANG_KHAO_SAT, assignment: { appointmentAt: at(14) } }, now)).toBe(false);
   });
 });

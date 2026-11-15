@@ -9,8 +9,10 @@ import { downloadReport } from '../../lib/reportExport.js';
 function Delta({ cur, prev, inverse, unit = '%' }) {
   if (!prev) return <div className="d faint">Chưa có kỳ trước để so sánh</div>;
   const pct = ((cur - prev) / prev) * 100;
+  const text = `${Math.abs(pct).toFixed(1).replace('.', ',')}${unit} so với kỳ trước`;
+  if (Math.abs(pct) < 0.05) return <div className="d faint">Không đổi so với kỳ trước</div>;
   const good = inverse ? pct < 0 : pct > 0;
-  return <div className={`d ${good ? 'up' : 'down'}`}>{pct > 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}{unit} so với kỳ trước</div>;
+  return <div className={`d ${good ? 'up' : 'down'}`}>{pct > 0 ? '▲' : '▼'} {text}</div>;
 }
 
 const short = (v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1).replace('.', ',')} tr` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(v));

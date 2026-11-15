@@ -304,8 +304,8 @@ export default function CreateRequestPage({ guest = false }) {
                 Đổi lịch miễn phí trước giờ hẹn ít nhất {data.config.freeCancelHours} giờ.
               </Alert>
               <div className="stack-sm">
-                <label className="check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>Tôi đồng ý điều khoản dịch vụ, chính sách phí giữ lịch và hủy, đổi lịch.</span></label>
-                <label className="check"><input type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} /><span>Tôi đồng ý cho IT OnSite xử lý thông tin liên hệ, địa chỉ và mô tả sự cố để thực hiện yêu cầu này.</span></label>
+                <label className="check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>Tôi đồng ý <Link to="/dieu-khoan" target="_blank">điều khoản dịch vụ</Link>, chính sách phí giữ lịch và hủy, đổi lịch.</span></label>
+                <label className="check"><input type="checkbox" checked={privacy} onChange={(e) => setPrivacy(e.target.checked)} /><span>Tôi đồng ý cho IT OnSite xử lý thông tin liên hệ, địa chỉ và mô tả sự cố để thực hiện yêu cầu này theo <Link to="/bao-ve-du-lieu" target="_blank">chính sách dữ liệu cá nhân</Link>.</span></label>
                 {errors.consent && <span className="small" style={{ color: 'var(--danger)' }}>{errors.consent}</span>}
               </div>
             </div>

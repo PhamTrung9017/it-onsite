@@ -124,3 +124,45 @@ export const BUSY_STATUSES = [
 ];
 
 export const isClosed = (status) => status === STATUS.HOAN_TAT || status === STATUS.DA_HUY;
+
+/** Ai xử lý ở từng bước của phiếu (dùng trên dòng thời gian và trang Quy trình). */
+export const STEP_ACTOR = {
+  [STATUS.MOI]: 'Điều phối viên',
+  [STATUS.DA_TIEP_NHAN]: 'Điều phối viên',
+  [STATUS.DA_PHAN_CONG]: 'Kỹ thuật viên',
+  [STATUS.KTV_DA_NHAN]: 'Kỹ thuật viên',
+  [STATUS.DANG_KHAO_SAT]: 'Kỹ thuật viên',
+  [STATUS.CHO_DUYET_BAO_GIA]: 'Khách hàng',
+  [STATUS.DANG_THUC_HIEN]: 'Kỹ thuật viên',
+  [STATUS.CHO_NGHIEM_THU]: 'Khách hàng',
+  [STATUS.CHO_THANH_TOAN]: 'Khách hàng',
+};
+
+/** Việc cần làm tiếp theo của phiếu đang mở: ai làm, làm gì. */
+export function nextAction(t) {
+  switch (t.status) {
+    case STATUS.MOI:
+      if (t.deposit?.status === 'CHO_THANH_TOAN') return { actor: 'Khách hàng', text: 'Chuyển phí giữ lịch' };
+      return { actor: 'Điều phối viên', text: 'Đối chiếu phí giữ lịch, tiếp nhận phiếu' };
+    case STATUS.DA_TIEP_NHAN: return { actor: 'Điều phối viên', text: 'Phân công kỹ thuật viên' };
+    case STATUS.DA_PHAN_CONG: return { actor: 'Kỹ thuật viên', text: 'Nhận hoặc từ chối việc' };
+    case STATUS.KTV_DA_NHAN: return { actor: 'Kỹ thuật viên', text: 'Đến nơi theo giờ hẹn, check-in' };
+    case STATUS.DANG_KHAO_SAT: return { actor: 'Kỹ thuật viên', text: 'Khảo sát, lập báo giá' };
+    case STATUS.CHO_DUYET_BAO_GIA: return { actor: 'Khách hàng', text: 'Duyệt hoặc từ chối báo giá' };
+    case STATUS.DANG_THUC_HIEN: return { actor: 'Kỹ thuật viên', text: 'Sửa chữa, chụp ảnh trước và sau, báo hoàn thành' };
+    case STATUS.CHO_NGHIEM_THU: return { actor: 'Khách hàng', text: 'Nghiệm thu kết quả' };
+    case STATUS.CHO_THANH_TOAN:
+      if (t.payment?.status === 'CHO_XAC_NHAN') return { actor: 'Điều phối viên', text: 'Đối chiếu chuyển khoản' };
+      if (t.payment?.method === 'TIEN_MAT') return { actor: 'Kỹ thuật viên', text: 'Thu tiền mặt' };
+      return { actor: 'Khách hàng', text: 'Thanh toán' };
+    default: return null;
+  }
+}
+
+const BEFORE_CHECK_IN = [STATUS.MOI, STATUS.DA_TIEP_NHAN, STATUS.DA_PHAN_CONG, STATUS.KTV_DA_NHAN];
+
+/** Đã qua giờ hẹn mà kỹ thuật viên chưa check-in. */
+export function isOverdue(t, now = Date.now()) {
+  const at = t.assignment?.appointmentAt || t.slotStart;
+  return BEFORE_CHECK_IN.includes(t.status) && Boolean(at) && new Date(at).getTime() < now;
+}
