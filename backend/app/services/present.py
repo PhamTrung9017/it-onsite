@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.security import decrypt_secret
 from app.domain.rules import BusinessConfig, WorkSchedule, deposit_deadline
@@ -104,9 +104,10 @@ class Presenter:
         self._techs: dict[int, Technician] = {}
 
     def tech(self, tech_id: int) -> Technician | None:
-        if tech_id not in self._techs:
-            self._techs[tech_id] = self.db.get(Technician, tech_id)
-        return self._techs[tech_id]
+        if not self._techs:
+            # Nạp mọi KTV kèm tài khoản trong một truy vấn (số KTV ít), tránh truy vấn lặp theo từng phiếu
+            self._techs = {t.id: t for t in self.db.scalars(select(Technician).options(joinedload(Technician.user)))}
+        return self._techs.get(tech_id) or self.db.get(Technician, tech_id)
 
     def ticket(self, t: Ticket, **extra) -> dict:
         assignment = t.assignment

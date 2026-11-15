@@ -1,5 +1,7 @@
 """Phí giữ lịch (BR-02, BR-03): phí khảo sát khách chuyển khoản trước khi cửa hàng tiếp nhận phiếu."""
 
+from datetime import timedelta
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,7 @@ from app.services.common import (
     dispatcher_ids,
     find_ticket,
     load_config,
+    load_tickets,
     money,
     notify,
     require_roles,
@@ -147,24 +150,26 @@ def refund(db: Session, user: User, ticket_id: str, received: bool) -> Ticket:
 def list_deposits(db: Session, user: User) -> list[Ticket]:
     """Khoản cần xử lý (chờ xác nhận, chờ hoàn) trước, sau đó các khoản đã xử lý gần đây."""
     require_roles(user, "DPV", "QTV")
-    base = select(Ticket).join(Deposit, Deposit.ticket_id == Ticket.id)
+    base = select(Ticket.id).join(Deposit, Deposit.ticket_id == Ticket.id)
     pending = db.scalars(base.where(Deposit.status.in_(PENDING)).order_by(Ticket.created_at)).all()
     done = db.scalars(
         base.where(Deposit.status.in_((DepositStatus.DA_XAC_NHAN, DepositStatus.DA_HOAN, DepositStatus.KHONG_HOAN)))
         .order_by(Deposit.confirmed_at.desc().nulls_last())
         .limit(RECENT)
     ).all()
-    return [*pending, *done]
+    return load_tickets(db, [*pending, *done])
 
 
 def sweep_unpaid(db: Session) -> int:
     """Phiếu quá hạn mà khách chưa chuyển phí giữ lịch thì tự hủy."""
     config = load_config(db)
     now = utcnow()
+    # Lọc quá hạn ngay trong câu truy vấn: thường không có phiếu nào nên không phải tải chi tiết phiếu
     unpaid = db.scalars(
         select(Ticket)
         .join(Deposit, Deposit.ticket_id == Ticket.id)
         .where(Ticket.status == Status.MOI, Deposit.status == DepositStatus.CHO_THANH_TOAN)
+        .where(Ticket.created_at < now - timedelta(minutes=config.deposit_minutes))
         .with_for_update(of=Ticket, skip_locked=True)
     ).all()
     expired = [t for t in unpaid if deposit_deadline(t.created_at, config) < now]

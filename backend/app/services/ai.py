@@ -14,7 +14,9 @@ from app.domain.classifier import URGENCY_LEVELS, classify_by_keywords, redact_p
 logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "v1"
+FALLBACK_VERSION = "tu-khoa-du-phong"
 PARSE_ATTEMPTS = 2
+_clients: dict[tuple, genai.Client] = {}
 
 PROMPT = """Bạn phân loại sự cố máy tính cho một dịch vụ sửa máy tính tận nơi tại TP. Hồ Chí Minh.
 Chọn đúng một mã loại sự cố trong danh sách:
@@ -57,13 +59,20 @@ def _parse(text: str | None, categories: dict[str, str]) -> dict:
     }
 
 
+def _client() -> genai.Client:
+    """Dùng lại một kết nối tới Gemini cho mọi lần phân loại (không bắt tay TLS lại mỗi lần)."""
+    settings = get_settings()
+    timeout_ms = int(settings.gemini_timeout_seconds * 1000)
+    key = (genai.Client, settings.gemini_api_key, timeout_ms)
+    if key not in _clients:
+        _clients[key] = genai.Client(api_key=settings.gemini_api_key, http_options=types.HttpOptions(timeout=timeout_ms))
+    return _clients[key]
+
+
 async def _ask_gemini(description: str, categories: dict[str, str]) -> dict:
     """UC05 luồng 3a: kết quả sai định dạng thì gửi lại một lần."""
     settings = get_settings()
-    client = genai.Client(
-        api_key=settings.gemini_api_key,
-        http_options=types.HttpOptions(timeout=int(settings.gemini_timeout_seconds * 1000)),
-    )
+    client = _client()
     listing = "\n".join(f"- {code}: {name}" for code, name in categories.items())
     last_error: Exception | None = None
     for _ in range(PARSE_ATTEMPTS):
@@ -83,24 +92,35 @@ async def _ask_gemini(description: str, categories: dict[str, str]) -> dict:
     raise ValueError("Kết quả phân loại không đúng định dạng") from last_error
 
 
+def _by_keywords(description: str, categories: dict[str, str]) -> dict:
+    result = classify_by_keywords(description)
+    if result["categoryCode"] not in categories:
+        result["categoryCode"] = "KHAC" if "KHAC" in categories else next(iter(categories))
+    return result
+
+
 async def classify(description: str, categories: dict[str, str], threshold: float) -> dict:
-    """Trả về kết quả phân loại; lỗi hoặc quá hạn thì state = failed để không chặn việc tạo phiếu."""
+    """Trả về kết quả phân loại, không chặn việc tạo phiếu.
+
+    Gemini lỗi hoặc quá hạn thì dùng bộ phân loại theo từ khóa làm gợi ý dự phòng, luôn cần điều phối viên xác nhận.
+    """
     settings = get_settings()
     cleaned = redact_personal_data(description)
     started = time.monotonic()
+    fallback = False
     if settings.gemini_api_key:
         try:
             result = await asyncio.wait_for(_ask_gemini(cleaned, categories), timeout=settings.gemini_timeout_seconds)
             version = PROMPT_VERSION
-        except Exception as exc:  # noqa: BLE001 - mọi lỗi từ dịch vụ ngoài đều chuyển sang trạng thái failed
-            logger.warning("Phân loại bằng Gemini thất bại: %s", exc)
-            return {"state": "failed", "ms": int((time.monotonic() - started) * 1000), "redacted": cleaned != description}
+        except Exception as exc:  # noqa: BLE001 - mọi lỗi từ dịch vụ ngoài đều chuyển sang gợi ý dự phòng
+            logger.warning("Phân loại bằng Gemini thất bại, dùng từ khóa: %s", exc)
+            result, version, fallback = _by_keywords(cleaned, categories), FALLBACK_VERSION, True
     else:
         result = classify_by_keywords(cleaned)
         version = "tu-khoa"
     return {
         **result,
-        "state": "low_confidence" if result["confidence"] < threshold else "ok",
+        "state": "low_confidence" if fallback or result["confidence"] < threshold else "ok",
         "promptVersion": version,
         "ms": int((time.monotonic() - started) * 1000),
         "redacted": cleaned != description,
