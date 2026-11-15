@@ -372,11 +372,18 @@ def apply_quote_decision(
         for item in quote.items:
             item.selected = True
         quote.status = "DA_DUYET"
+    short = []
     for item in quote.items:
         if item.selected and item.kind == "part":
             part = db.get(Part, item.ref_id, with_for_update=True)
             if part:
+                if part.stock < item.qty:
+                    short.append(f"{part.name} (cần {item.qty}, còn {part.stock})")
                 part.stock = max(0, part.stock - item.qty)
+    if short:
+        notify(
+            db, admin_ids(db), "Linh kiện không đủ tồn kho", f"Phiếu {ticket.id} đã duyệt: {', '.join(short)}. Cần nhập thêm.", ticket.id
+        )
     note = "Khách duyệt một phần báo giá" if quote.status == "DUYET_MOT_PHAN" else "Khách duyệt báo giá"
     transition(db, ticket, Status.DANG_THUC_HIEN, actor, note, actor_name)
 
@@ -472,11 +479,17 @@ def submit_review(db: Session, user: User, ticket_id: str, stars: int, comment: 
     if error:
         raise ApiError(error)
     ticket.review = Review(stars=stars, comment=comment.strip(), at=utcnow())
+    db.flush()
     if ticket.assignment:
         tech = db.get(Technician, ticket.assignment.tech_id, with_for_update=True)
-        total = float(tech.rating) * tech.rating_count + stars
-        tech.rating_count += 1
-        tech.rating = round(total / tech.rating_count, 1)
+        # Tính lại từ mọi đánh giá của các phiếu KTV đã nhận, tránh sai số khi cộng dồn điểm đã làm tròn
+        stars_of_tech = db.scalars(
+            select(Review.stars)
+            .join(Assignment, Assignment.ticket_id == Review.ticket_id)
+            .where(Assignment.tech_id == tech.id, Assignment.result == "NHAN")
+        ).all()
+        tech.rating_count = len(stars_of_tech)
+        tech.rating = round(sum(stars_of_tech) / len(stars_of_tech), 1)
     if stars <= 2:
         notify(db, admin_ids(db), "Cảnh báo đánh giá thấp", f'Phiếu {ticket.id} nhận {stars} sao: "{comment.strip()}"', ticket.id)
     audit(db, user, "DANH_GIA", ticket.id, f"{stars} sao")

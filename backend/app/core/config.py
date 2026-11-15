@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     # Gửi email qua HTTPS (Google Apps Script) khi máy chủ không mở được cổng SMTP.
     email_relay_url: str = ""
     email_relay_secret: str = ""
+    # Tên miền của tài khoản mẫu: không gửi email thật tới các địa chỉ này (tên miền có thể thuộc về người khác).
+    email_skip_domains: str = "demo.vn"
 
     background_jobs: bool = True
     sweep_interval_seconds: int = 30
@@ -83,6 +85,13 @@ class Settings(BaseSettings):
     @property
     def email_enabled(self) -> bool:
         return bool(self.email_relay_url or self.smtp_host)
+
+    def email_deliverable(self, address: str | None) -> bool:
+        """Đã cấu hình gửi email và địa chỉ không thuộc tên miền của tài khoản mẫu."""
+        if not self.email_enabled or not address or "@" not in address:
+            return False
+        skipped = {d.strip().lower() for d in self.email_skip_domains.split(",") if d.strip()}
+        return address.rsplit("@", 1)[1].lower() not in skipped
 
     @property
     def tz(self) -> ZoneInfo:

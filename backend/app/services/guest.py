@@ -82,6 +82,9 @@ def create_ticket(db: Session, body) -> tuple[Ticket, User]:
     device = _device(db, user, body.device_type, body.device_brand, body.device_model)
     fields = body.model_dump(exclude={"name", "phone", "email", "device_type", "device_brand", "device_model"})
     ticket = tickets.create_ticket(db, user, SimpleNamespace(**fields, device_id=device.id))
+    if user.is_guest:
+        # Lưu địa chỉ vào hồ sơ để lần đặt sau và khi đăng ký tài khoản không phải nhập lại
+        user.address, user.ward = ticket.address, ticket.ward
     audit(db, user, "DAT_LICH_NHANH", ticket.id)
     if user.email:
         url = get_settings().app_url.rstrip("/")

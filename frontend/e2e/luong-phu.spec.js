@@ -180,6 +180,12 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
     await loginAs(page, 'ktv@demo.vn');
     await page.goto(`/ktv/viec/${id}`);
     await page.getByRole('button', { name: 'Khách xác nhận tại chỗ' }).click();
+    if (BACKEND) {
+      // Máy chủ kiểm thử không cấu hình Telegram, email: khách không nhận được mã nên hệ thống báo cho KTV
+      await expect(page.getByText('Khách chưa liên kết Telegram hoặc email nên không nhận được mã.', { exact: false })).toBeVisible();
+      return;
+    }
+    await expect(page.getByText('Đã gửi mã xác nhận cho khách qua email.')).toBeVisible();
     await expect(page.locator('#oc')).toBeVisible();
     const message = (await notificationsOf(page, 'khach@demo.vn')).find((n) => n.title === 'Mã xác nhận báo giá').body;
     const code = message.match(/\b\d{6}\b/)[0];

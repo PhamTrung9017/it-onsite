@@ -63,8 +63,10 @@ def _deliver(message: OutboxMessage) -> bool:
             return False
         send_telegram(message.recipient, message.subject, message.body, message.reply_markup)
     elif message.channel == "email":
-        if not settings.email_enabled:
-            logger.info("Email chưa gửi vì chưa cấu hình cách gửi email – tới %s: %s\n%s", message.recipient, message.subject, message.body)
+        if not settings.email_deliverable(message.recipient):
+            logger.info(
+                "Email không gửi (chưa cấu hình cách gửi hoặc địa chỉ tài khoản mẫu) – tới %s: %s", message.recipient, message.subject
+            )
             return False
         send_email(message.recipient, message.subject, message.body)
     return True

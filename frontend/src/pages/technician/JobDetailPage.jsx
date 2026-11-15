@@ -93,7 +93,7 @@ export default function JobDetailPage() {
               <div className="stack">
                 <QuoteTable quote={pendingQuote} />
                 <Alert>Khách duyệt trên điện thoại của họ. Nếu khách không tiện thao tác, gửi mã xác nhận để khách đọc cho bạn.</Alert>
-                <Button variant="outline" icon={Send} onClick={async () => { const r = await run('code', () => api.sendOnsiteCode(t.id)); if (r) { toast.success(`Đã gửi mã xác nhận tới số ${r.sentTo}.`); setModal('code'); } }} loading={busy === 'code'}>Khách xác nhận tại chỗ</Button>
+                <Button variant="outline" icon={Send} onClick={async () => { const r = await run('code', () => api.sendOnsiteCode(t.id)); if (r) { toast.success(`Đã gửi mã xác nhận cho khách qua ${r.channels.join(' và ')}.`); setModal('code'); } }} loading={busy === 'code'}>Khách xác nhận tại chỗ</Button>
               </div>
             </Card>
           )}

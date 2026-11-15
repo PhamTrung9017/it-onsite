@@ -5,7 +5,7 @@
  * Cài đặt: Project Settings → Script Properties → thêm RELAY_SECRET (trùng EMAIL_RELAY_SECRET của backend).
  * Triển khai: Deploy → New deployment → Web app; Execute as: Me; Who has access: Anyone.
  */
-const SENDER_NAME = 'IT OnSite – Cài Win Dạo';
+const SENDER_NAME = 'IT OnSite';
 
 function doPost(e) {
   const secret = PropertiesService.getScriptProperties().getProperty('RELAY_SECRET');
