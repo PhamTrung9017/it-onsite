@@ -75,24 +75,28 @@ frontend/
 |---|---|---|
 | `/dang-nhap`, `/dang-ky`, `/quen-mat-khau`, `/dat-lai-mat-khau` | Đăng nhập, đăng ký, quên và đặt lại mật khẩu | UC01 |
 | `/`, `/bang-gia` | Trang chủ, bảng giá dịch vụ | UC03 |
-| `/khach/ho-so` | Hồ sơ, thiết bị, tải về và yêu cầu xóa dữ liệu | UC02 |
+| `/dat-lich` | Đặt lịch nhanh không cần tài khoản | UC04, UC05 |
+| `/tra-cuu` | Tra cứu đơn bằng mã đơn và số điện thoại; phiên tra cứu làm các bước của khách trên đơn đó | UC06 |
+| `/khach/ho-so` | Hồ sơ, thiết bị, liên kết Telegram, tải về và yêu cầu xóa dữ liệu | UC02, UC17 |
 | `/khach/tao-yeu-cau` | Đặt lịch 3 bước, gợi ý loại sự cố | UC04, UC05 |
 | `/khach/phieu`, `/khach/phieu/:id` | Danh sách, chi tiết phiếu, hủy, đổi lịch, nghiệm thu, đánh giá | UC06, UC07, UC13, UC16 |
 | `/khach/phieu/:id/bao-gia` | Duyệt toàn bộ, một phần hoặc từ chối báo giá | UC11 |
 | `/khach/phieu/:id/thanh-toan` | Chuyển khoản VietQR hoặc tiền mặt | UC14 |
 | `/khach/phieu/:id/bien-nhan` | Biên nhận dịch vụ in được sau khi hoàn tất | UC06 |
 | `/khach/bao-hanh` | Phiếu bảo hành, gửi yêu cầu bảo hành | UC15 |
+| `/ktv/ho-so` | Hồ sơ kỹ thuật viên, liên kết Telegram | UC17 |
 | `/ktv/lich-viec`, `/ktv/viec/:id` | Lịch việc, nhận hoặc từ chối, check-in, ảnh, checklist, hoàn thành, thu tiền | UC09, UC12, UC14 |
 | `/ktv/viec/:id/bao-gia` | Lập báo giá chính và báo giá bổ sung | UC10 |
 | `/dieu-phoi` | Bảng điều phối: tiếp nhận, xác nhận loại sự cố, phân công theo kỹ năng, khu vực và lịch làm việc | UC05, UC08 |
-| `/dieu-phoi/thanh-toan` | Xác nhận chuyển khoản, đối soát tiền mặt | UC14 |
+| `/dieu-phoi/thanh-toan` | Xác nhận phí giữ lịch và hoàn phí, xác nhận chuyển khoản, đối soát tiền mặt | UC14 |
 | `/dieu-phoi/bao-hanh` | Xử lý yêu cầu bảo hành | UC15 |
 | `.../thong-bao` | Thông báo trên web (mọi vai trò) | UC17 |
 | `/quan-tri/ky-thuat-vien` | Kỹ thuật viên: kỹ năng, khu vực, lịch làm việc, ngày nghỉ, khóa | UC18 |
 | `/quan-tri/dich-vu`, `/quan-tri/linh-kien` | Dịch vụ, bảng giá, linh kiện | UC19, UC20 |
-| `/quan-tri/bao-cao` | Báo cáo thống kê theo 7 ngày, 30 ngày hoặc theo tháng; xuất file Excel gồm tổng quan, doanh thu, bảng lương và hiệu suất kỹ thuật viên, đối soát, linh kiện, đánh giá, danh sách phiếu | UC21 |
+| `/quan-tri/bao-cao` | Báo cáo thống kê theo 7 ngày, 30 ngày, theo tháng hoặc khoảng ngày tùy chọn, lọc theo kỹ thuật viên, loại sự cố, phường; xuất file Excel gồm tổng quan, doanh thu, bảng lương và hiệu suất kỹ thuật viên, đối soát, linh kiện, đánh giá, danh sách phiếu | UC21 |
 | `/quan-tri/tai-khoan` | Tài khoản nội bộ và phân quyền | UC22 |
-| `/quan-tri/cau-hinh`, `/quan-tri/nhat-ky` | Tham số nghiệp vụ (kể cả lương cứng, % hoa hồng kỹ thuật viên), nhật ký hệ thống | UC23, NFR-08 |
+| `/quan-tri/cau-hinh`, `/quan-tri/nhat-ky` | Tham số nghiệp vụ (kể cả lương cứng, % hoa hồng kỹ thuật viên), nhóm Telegram, nạp lại dữ liệu trình diễn, nhật ký hệ thống | UC23, NFR-08 |
+| `/quan-tri/tinh-trang` | Tình trạng hệ thống: cơ sở dữ liệu, tác vụ nền, hàng đợi thông báo, Telegram, email, AI | NFR |
 
 ## Gọi API
 
@@ -102,6 +106,8 @@ Quy tắc nghiệp vụ được kiểm tra ở backend; `src/lib` giữ bản d
 
 ## Kiểm thử
 
-- `src/lib/lib.test.js`: 17 ca kiểm thử đơn vị cho máy trạng thái, phí, trùng lịch, xếp hạng kỹ thuật viên, bảo hành, đánh giá, VietQR (CRC-16), phân loại sự cố.
+- `src/lib/*.test.js` (Vitest): kiểm thử đơn vị cho máy trạng thái, phí, trùng lịch, xếp hạng kỹ thuật viên, bảo hành, đánh giá, VietQR (CRC-16), phân loại sự cố, xuất báo cáo Excel, danh sách phường.
 - `e2e/luong-nghiep-vu.spec.js`: chạy trọn quy trình từ khách đặt lịch tới bảo hành qua 4 vai trò, nhánh từ chối báo giá, quá hạn phản hồi, hủy phiếu, phân quyền. Chạy được với cả dữ liệu giả lập và backend thật.
+- `e2e/luong-phu.spec.js`: các luồng phụ – đổi lịch, ngày nghỉ của kỹ thuật viên, nghiệm thu chưa đạt và báo giá bổ sung, mã xác nhận tại chỗ, kỹ thuật viên từ chối việc, từ chối bảo hành, hồ sơ, đăng ký, báo cáo và lương, các màn hình quản trị.
+- `e2e/khach-dat-nhanh.spec.js`: đặt nhanh không cần tài khoản, tra cứu bằng mã đơn và số điện thoại, tạo tài khoản bằng cùng số điện thoại.
 - `e2e/giao-dien.spec.js`: mở mọi màn hình trên máy tính và điện thoại, kiểm tra không lỗi JavaScript và không tràn ngang.

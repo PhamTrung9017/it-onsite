@@ -135,10 +135,11 @@ export function RegisterPage() {
 
 /** Tra cứu đơn bằng mã đơn và số điện thoại; tra cứu được thì làm tiếp các bước của khách trên đơn đó. */
 export function LookupPage() {
-  const { startGuest } = useAuth();
+  const { startGuest, user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [form, setForm] = useState({ ticketId: params.get('ma') || '', phone: '' });
+  // Đang tra cứu một đơn (ví dụ mở phiếu bảo hành mới của đơn đó): điền sẵn số điện thoại
+  const [form, setForm] = useState({ ticketId: params.get('ma') || '', phone: user?.guestTicket ? user.phone : '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e) {
