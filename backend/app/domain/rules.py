@@ -139,7 +139,12 @@ def validate_slot(slot_start: datetime | None, config: BusinessConfig, now: date
         return "Vui lòng chọn ngày và khung giờ."
     if slot_start < now + timedelta(hours=SLOT_LEAD_HOURS):
         return f"Vui lòng chọn khung giờ cách hiện tại ít nhất {SLOT_LEAD_HOURS} giờ."
-    local = slot_start.astimezone(tz)
+    return outside_service_hours(slot_start, config, tz)
+
+
+def outside_service_hours(at: datetime, config: BusinessConfig, tz: ZoneInfo) -> str | None:
+    """Giờ hẹn (giờ KTV đến nơi) phải nằm trong giờ phục vụ."""
+    local = at.astimezone(tz)
     minute_of_day = local.hour * 60 + local.minute
     if not _minutes(config.service_start) <= minute_of_day < _minutes(config.service_end):
         return f"Khung giờ phải nằm trong giờ phục vụ {config.service_start}–{config.service_end}."

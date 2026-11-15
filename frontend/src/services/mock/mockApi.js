@@ -578,6 +578,7 @@ export const mockApi = {
       db.devices.push(device);
     }
     const ticket = createTicketFor(db, user, { ...data, deviceId: device.id });
+    if (user.isGuest) Object.assign(user, { address: ticket.address, ward: ticket.ward });
     audit(db, user, 'DAT_LICH_NHANH', ticket.id);
     startSession(user, ticket.id);
     return { user: publicUser(user), ticket };
@@ -786,8 +787,10 @@ export const mockApi = {
     t.review = { stars, comment: (comment || '').trim(), at: nowIso() };
     const tech = db.technicians.find((x) => x.id === t.assignment?.techId);
     if (tech) {
-      tech.rating = Math.round(((tech.rating * tech.ratingCount + stars) / (tech.ratingCount + 1)) * 10) / 10;
-      tech.ratingCount += 1;
+      // Tính lại từ mọi đánh giá của KTV, tránh sai số khi cộng dồn điểm đã làm tròn
+      const stars = db.tickets.filter((x) => x.review && x.assignment?.techId === tech.id).map((x) => x.review.stars);
+      tech.ratingCount = stars.length;
+      tech.rating = Math.round((stars.reduce((a, b) => a + b, 0) / stars.length) * 10) / 10;
     }
     if (stars <= 2) notify(db, adminIds(db), 'Cảnh báo đánh giá thấp', `Phiếu ${t.id} nhận ${stars} sao: "${t.review.comment}"`, t.id);
     return enrichTicket(db, t, user);
@@ -910,10 +913,15 @@ export const mockApi = {
     const user = requireRole(db, 'KTV');
     const t = findTicket(db, id);
     if (t.assignment?.techId !== techOfUser(db, user.id)?.id || t.status !== STATUS.CHO_DUYET_BAO_GIA) throw new ApiError('Không có báo giá chờ duyệt.', 409);
+    const customer = db.users.find((u) => u.id === t.customerId);
+    const channels = [customer?.telegramChatId && 'Telegram', customer?.email && 'email'].filter(Boolean);
+    if (!channels.length) {
+      throw new ApiError('Khách chưa liên kết Telegram hoặc email nên không nhận được mã. Hãy để khách duyệt báo giá trên điện thoại của khách (trang phiếu hoặc Tra cứu đơn).', 409);
+    }
     const code = String(Math.floor(100000 + Math.random() * 900000));
     t.onsiteCode = { code, expiresAt: new Date(Date.now() + 10 * 60000).toISOString() };
     notify(db, [t.customerId], 'Mã xác nhận báo giá', `Mã xác nhận báo giá phiếu ${t.id} là ${code} (hiệu lực 10 phút). Chỉ đọc mã cho kỹ thuật viên khi bạn đồng ý toàn bộ báo giá.`, t.id);
-    return { sentTo: db.users.find((u) => u.id === t.customerId)?.phone };
+    return { channels };
   }),
 
   confirmOnsite: (id, { code }) => respond((db) => {
@@ -1022,6 +1030,8 @@ export const mockApi = {
     if (!tech) throw new ApiError('Kỹ thuật viên không khả dụng.');
     const at = new Date(appointmentAt).getTime();
     if (Number.isNaN(at) || at < Date.now()) throw new ApiError('Giờ hẹn phải ở tương lai.');
+    const outside = validateSlot(appointmentAt, db.config, Date.now(), 0);
+    if (outside) throw new ApiError(outside);
     if (offDuty(tech.schedule, appointmentAt, t.estimatedMinutes)) throw new ApiError('Giờ hẹn nằm ngoài lịch làm việc của kỹ thuật viên này.', 409);
     if (hasConflict(tech.id, appointmentAt, t.estimatedMinutes, db.tickets, db.config, t.id)) throw new ApiError('Kỹ thuật viên bị trùng lịch ở khung giờ này (BR-04).', 409);
     const assignedAt = nowIso();
@@ -1445,10 +1455,14 @@ function applyQuoteDecision(db, t, q, actor, decision, itemIds, reason) {
     q.status = 'DA_DUYET';
   }
   // Trừ tồn kho linh kiện đã được duyệt
+  const short = [];
   q.items.filter((i) => i.selected && i.kind === 'part').forEach((i) => {
     const p = db.parts.find((x) => x.id === i.refId);
-    if (p) p.stock = Math.max(0, p.stock - i.qty);
+    if (!p) return;
+    if (p.stock < i.qty) short.push(`${p.name} (cần ${i.qty}, còn ${p.stock})`);
+    p.stock = Math.max(0, p.stock - i.qty);
   });
+  if (short.length) notify(db, adminIds(db), 'Linh kiện không đủ tồn kho', `Phiếu ${t.id} đã duyệt: ${short.join(', ')}. Cần nhập thêm.`, t.id);
   transition(db, t, STATUS.DANG_THUC_HIEN, actor, q.status === 'DUYET_MOT_PHAN' ? 'Khách duyệt một phần báo giá' : 'Khách duyệt báo giá');
 }
 

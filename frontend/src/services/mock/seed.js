@@ -53,7 +53,7 @@ export const DEFAULT_CONFIG = {
   aiConfidenceThreshold: 0.6,
   serviceHours: { start: '08:00', end: '20:00' },
   areas: AREAS,
-  bank: { name: 'Ngân hàng mẫu', bin: '970423', accountNumber: '0123456789', accountName: 'CAI WIN DAO' },
+  bank: { name: 'Ngân hàng mẫu', bin: '970423', accountNumber: '0123456789', accountName: 'IT ONSITE' },
   payroll: { baseSalary: 5000000, commissionPercent: 30 },
   telegramGroupChatId: '',
 };

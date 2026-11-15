@@ -22,6 +22,9 @@ from app.models import (
 )
 
 SYSTEM_NAME = "Hệ thống"
+# Đổi trạng thái chỉ gửi email ở các mốc cần người nhận xử lý hoặc biết ngay; các bước khác báo trên web và Telegram.
+# Báo giá, phí giữ lịch, biên nhận, bảo hành có email riêng.
+EMAIL_STATUSES = {Status.CHO_THANH_TOAN, Status.DA_HUY}
 
 
 def utcnow() -> datetime:
@@ -98,7 +101,7 @@ def notify(
                     channel="telegram", recipient=user.telegram_chat_id, subject=title, body=body, reply_markup=buttons, next_attempt_at=now
                 )
             )
-        if email and settings.email_enabled and user.email:
+        if email and settings.email_deliverable(user.email):
             db.add(OutboxMessage(channel="email", recipient=user.email, subject=f"[IT OnSite] {title}", body=body, next_attempt_at=now))
 
 
@@ -183,7 +186,7 @@ def transition(
         recipients += dispatcher_ids(db)
     skip = {actor.id if actor else None, *notified_separately}
     message = f"Phiếu {ticket.id}: {label}" + (f" ({note})." if note else ".")
-    notify(db, [r for r in recipients if r not in skip], "Cập nhật trạng thái phiếu", message, ticket.id)
+    notify(db, [r for r in recipients if r not in skip], "Cập nhật trạng thái phiếu", message, ticket.id, email=target in EMAIL_STATUSES)
 
 
 def approved_total(ticket: Ticket) -> int:

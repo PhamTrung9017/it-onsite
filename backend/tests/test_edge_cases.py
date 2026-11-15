@@ -66,7 +66,13 @@ def test_technician_cannot_accept_after_deadline_br06(client, khach, dpv, ktv):
     assert ktv.post(f"/tickets/{ticket['id']}/assignment/response", {"accept": True}).status_code == 409
 
 
-def test_onsite_code_is_cancelled_after_five_wrong_attempts(client, ktv):
+def test_onsite_code_needs_a_channel_to_reach_customer(client, ktv):
+    ticket = next(t for t in ktv.ok("get", "/tech/jobs") if t["status"] == "CHO_DUYET_BAO_GIA")
+    response = ktv.post(f"/tickets/{ticket['id']}/onsite-code")
+    assert response.status_code == 409 and "chưa liên kết Telegram hoặc email" in response.json()["detail"]
+
+
+def test_onsite_code_is_cancelled_after_five_wrong_attempts(client, ktv, khach_telegram):
     ticket = next(t for t in ktv.ok("get", "/tech/jobs") if t["status"] == "CHO_DUYET_BAO_GIA")
     ktv.ok("post", f"/tickets/{ticket['id']}/onsite-code")
     codes = [ktv.post(f"/tickets/{ticket['id']}/onsite-code/confirm", {"code": "000000"}).status_code for _ in range(5)]

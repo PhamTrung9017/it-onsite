@@ -145,6 +145,21 @@ def send_onsite_code(db: Session, user: User, ticket_id: str) -> dict:
     require_assigned_tech(db, user, ticket)
     if ticket.status != Status.CHO_DUYET_BAO_GIA:
         raise conflict("Không có báo giá chờ duyệt.")
+    customer = ticket.customer
+    settings = get_settings()
+    channels = [
+        name
+        for name, ok in (
+            ("Telegram", bool(settings.telegram_bot_token and customer.telegram_chat_id)),
+            ("email", settings.email_deliverable(customer.email)),
+        )
+        if ok
+    ]
+    if not channels:
+        raise conflict(
+            "Khách chưa liên kết Telegram hoặc email nên không nhận được mã. "
+            "Hãy để khách duyệt báo giá trên điện thoại của khách (trang phiếu hoặc Tra cứu đơn)."
+        )
     code = f"{secrets.randbelow(900000) + 100000}"
     ticket.onsite_code_hash = token_digest(code)
     ticket.onsite_code_expires_at = utcnow() + timedelta(minutes=ONSITE_CODE_MINUTES)
@@ -157,7 +172,7 @@ def send_onsite_code(db: Session, user: User, ticket_id: str) -> dict:
         "Chỉ đọc mã cho kỹ thuật viên khi bạn đồng ý toàn bộ báo giá.",
         ticket.id,
     )
-    return {"sentTo": ticket.customer.phone}
+    return {"channels": channels}
 
 
 def confirm_onsite(db: Session, user: User, ticket_id: str, code: str) -> Ticket:
