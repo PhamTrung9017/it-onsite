@@ -48,6 +48,7 @@ def catalog(db: Db) -> dict:
             "serviceHours": {"start": config.service_start, "end": config.service_end},
             "areas": config.areas,
             "reviewWindowDays": config.review_window_days,
+            "techResponseMinutes": config.tech_response_minutes,
         },
         "features": {
             "telegram": bool(settings.telegram_bot_token and settings.telegram_bot_username),

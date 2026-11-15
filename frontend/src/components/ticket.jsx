@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Bell, Check, CheckCheck, Clock, MapPin, Sparkles, X } from 'lucide-react';
-import { MAIN_FLOW, STATUS, STATUS_LABEL } from '../lib/ticketStatus.js';
+import { MAIN_FLOW, STATUS, STATUS_LABEL, STEP_ACTOR, nextAction } from '../lib/ticketStatus.js';
 import { formatDateTime, money, relativeDay, formatTime, timeAgo } from '../lib/format.js';
 import { quoteTotal } from '../lib/rules.js';
 import { oldWardText } from '../lib/wards.js';
@@ -30,22 +30,31 @@ export function TicketTimeline({ ticket }) {
     );
   }
   const currentIndex = MAIN_FLOW.indexOf(ticket.status);
+  const next = nextAction(ticket);
   return (
-    <ol className="timeline">
-      {MAIN_FLOW.map((s, i) => {
-        const h = reached.get(s);
-        const state = i < currentIndex ? 'done' : i === currentIndex ? (s === STATUS.HOAN_TAT ? 'done' : 'current') : 'todo';
-        // Khách từ chối báo giá: bỏ qua các bước thực hiện và nghiệm thu
-        if (!h && (s === STATUS.DANG_THUC_HIEN || s === STATUS.CHO_NGHIEM_THU) && reached.has(STATUS.CHO_THANH_TOAN)) return null;
-        return (
-          <li key={s} className={state}>
-            <span className="dot">{state === 'done' && <Check aria-hidden />}</span>
-            <div className="t">{STATUS_LABEL[s]}</div>
-            {h && state !== 'todo' && <div className="s">{formatDateTime(h.at)} · {h.by}{h.note ? ` · ${h.note}` : ''}</div>}
-          </li>
-        );
-      })}
-    </ol>
+    <>
+      {next && (
+        <p className="next-action small">
+          <span className="muted">Bước tiếp theo:</span> <strong>{next.text}</strong> · {next.actor}
+        </p>
+      )}
+      <ol className="timeline">
+        {MAIN_FLOW.map((s, i) => {
+          const h = reached.get(s);
+          const state = i < currentIndex ? 'done' : i === currentIndex ? (s === STATUS.HOAN_TAT ? 'done' : 'current') : 'todo';
+          // Khách từ chối báo giá: bỏ qua các bước thực hiện và nghiệm thu
+          if (!h && (s === STATUS.DANG_THUC_HIEN || s === STATUS.CHO_NGHIEM_THU) && reached.has(STATUS.CHO_THANH_TOAN)) return null;
+          return (
+            <li key={s} className={state}>
+              <span className="dot">{state === 'done' && <Check aria-hidden />}</span>
+              <div className="t">{STATUS_LABEL[s]}</div>
+              {h && state !== 'todo' && <div className="s">{formatDateTime(h.at)} · {h.by}{h.note ? ` · ${h.note}` : ''}</div>}
+              {state === 'todo' && STEP_ACTOR[s] && <div className="s">{STEP_ACTOR[s]}</div>}
+            </li>
+          );
+        })}
+      </ol>
+    </>
   );
 }
 

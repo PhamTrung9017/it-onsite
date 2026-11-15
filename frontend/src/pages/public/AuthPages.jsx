@@ -126,7 +126,7 @@ export function RegisterPage() {
         <Field label="Số điện thoại" htmlFor="p" hint="Dùng để đăng nhập và để kỹ thuật viên liên hệ"><div className="input-group"><Phone aria-hidden /><input id="p" inputMode="tel" className="input" autoComplete="tel" value={form.phone} onChange={set('phone')} /></div></Field>
         <Field label="Email (không bắt buộc)" htmlFor="e" hint="Nhận thông báo, biên nhận và đặt lại mật khẩu qua email"><div className="input-group"><Mail aria-hidden /><input id="e" type="email" className="input" autoComplete="email" value={form.email} onChange={set('email')} /></div></Field>
         <Field label="Mật khẩu" htmlFor="pw" hint="Ít nhất 8 ký tự"><div className="input-group"><Lock aria-hidden /><input id="pw" type="password" className="input" autoComplete="new-password" value={form.password} onChange={set('password')} /></div></Field>
-        <label className="check"><input type="checkbox" checked={form.consent} onChange={set('consent')} /><span>Tôi đồng ý với điều khoản dịch vụ và cho phép IT OnSite xử lý dữ liệu cá nhân để thực hiện yêu cầu hỗ trợ theo Luật Bảo vệ dữ liệu cá nhân.</span></label>
+        <label className="check"><input type="checkbox" checked={form.consent} onChange={set('consent')} /><span>Tôi đồng ý với <Link to="/dieu-khoan" target="_blank">điều khoản dịch vụ</Link> và cho phép IT OnSite xử lý dữ liệu cá nhân để thực hiện yêu cầu hỗ trợ theo <Link to="/bao-ve-du-lieu" target="_blank">chính sách dữ liệu cá nhân</Link>.</span></label>
         <Button type="submit" size="lg" block loading={busy}>Tạo tài khoản</Button>
       </form>
     </AuthShell>

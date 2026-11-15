@@ -459,7 +459,7 @@ export const mockApi = {
   getCatalog: () => respond((db) => ({
     services: db.services.filter((s) => s.active),
     categories: db.categories,
-    config: { surveyFee: db.config.surveyFee, freeCancelHours: db.config.freeCancelHours, depositMinutes: db.config.depositMinutes, serviceHours: db.config.serviceHours, areas: db.config.areas, reviewWindowDays: db.config.reviewWindowDays },
+    config: { surveyFee: db.config.surveyFee, freeCancelHours: db.config.freeCancelHours, depositMinutes: db.config.depositMinutes, serviceHours: db.config.serviceHours, areas: db.config.areas, reviewWindowDays: db.config.reviewWindowDays, techResponseMinutes: db.config.techResponseMinutes },
   }), 120),
 
   /* ---------- Khách hàng: hồ sơ, thiết bị (UC02) ---------- */
