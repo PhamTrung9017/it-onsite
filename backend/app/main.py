@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import text
 
@@ -75,6 +76,8 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Total-Count"],
 )
+# Nén phản hồi lớn (danh sách phiếu, báo cáo) để tải nhanh trên điện thoại
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.exception_handler(ApiError)

@@ -145,6 +145,31 @@ def _forfeited_between(db: Session, start: datetime, end: datetime) -> list[Tick
     return list(db.scalars(query))
 
 
+def _report_pool(db: Session, period: Period) -> list[Ticket]:
+    """Phiếu tạo trong kỳ, phiếu hoàn tất hoặc mất phí giữ lịch trong kỳ này và kỳ trước."""
+
+    def between(column, start: datetime, end: datetime):
+        return (column >= start) & (column < end)
+
+    query = (
+        select(Ticket)
+        .outerjoin(Deposit, Deposit.ticket_id == Ticket.id)
+        .where(
+            or_(
+                between(Ticket.created_at, period.start, period.end),
+                (Ticket.status == Status.HOAN_TAT)
+                & (
+                    between(Ticket.completed_at, period.start, period.end)
+                    | between(Ticket.completed_at, period.prev_start, period.prev_end)
+                ),
+                (Deposit.status == DepositStatus.KHONG_HOAN)
+                & (between(Deposit.settled_at, period.start, period.end) | between(Deposit.settled_at, period.prev_start, period.prev_end)),
+            )
+        )
+    )
+    return list(db.scalars(query))
+
+
 def report(
     db: Session,
     user: User,
@@ -163,11 +188,23 @@ def report(
     period = _period(days, month, now, date_from, date_to)
     flt = flt or ReportFilter()
     tz = get_settings().tz
-    created = flt.apply(db.scalars(select(Ticket).where(Ticket.created_at >= period.start, Ticket.created_at < period.end)))
-    completed = flt.apply(_completed_between(db, period.start, period.end))
-    completed_prev = flt.apply(_completed_between(db, period.prev_start, period.prev_end))
-    forfeited = flt.apply(_forfeited_between(db, period.start, period.end))
-    forfeited_prev = flt.apply(_forfeited_between(db, period.prev_start, period.prev_end))
+    # Một lần đọc mọi phiếu liên quan tới kỳ này và kỳ trước, rồi chia nhóm trong bộ nhớ (ít lượt truy vấn hơn)
+    pool = flt.apply(_report_pool(db, period))
+
+    def within(value: datetime | None, start: datetime, end: datetime) -> bool:
+        return value is not None and start <= value < end
+
+    def done_in(start: datetime, end: datetime) -> list[Ticket]:
+        return [t for t in pool if t.status == Status.HOAN_TAT and within(t.completed_at, start, end)]
+
+    def forfeited_in(start: datetime, end: datetime) -> list[Ticket]:
+        return [t for t in pool if t.deposit and t.deposit.status == DepositStatus.KHONG_HOAN and within(t.deposit.settled_at, start, end)]
+
+    created = [t for t in pool if within(t.created_at, period.start, period.end)]
+    completed = done_in(period.start, period.end)
+    completed_prev = done_in(period.prev_start, period.prev_end)
+    forfeited = forfeited_in(period.start, period.end)
+    forfeited_prev = forfeited_in(period.prev_start, period.prev_end)
 
     by_day = []
     day = period.start.astimezone(tz)

@@ -53,9 +53,11 @@ def test_invalid_json_is_retried_once_uc05_3a(gemini):
     assert len(models.prompts) == 2
 
 
-def test_two_invalid_replies_mark_unclassified(gemini):
+def test_two_invalid_replies_fall_back_to_keywords(gemini):
     gemini(['{"categoryCode": "LA"}', "{}"])
-    assert asyncio.run(ai.classify("Máy không lên nguồn", CATEGORIES, 0.6))["state"] == "failed"
+    result = asyncio.run(ai.classify("Máy không lên nguồn", CATEGORIES, 0.6))
+    assert result["state"] == "low_confidence" and result["promptVersion"] == ai.FALLBACK_VERSION
+    assert result["categoryCode"] in CATEGORIES, "gợi ý dự phòng chỉ dùng loại sự cố có trong danh mục"
 
 
 def test_low_confidence_needs_dispatcher(gemini):
@@ -66,4 +68,12 @@ def test_low_confidence_needs_dispatcher(gemini):
 def test_timeout_does_not_block_nfr03(gemini):
     gemini([GOOD], delay=2)
     result = asyncio.run(ai.classify("Máy không lên nguồn", CATEGORIES, 0.6))
-    assert result["state"] == "failed" and result["ms"] < 1500
+    assert result["state"] == "low_confidence" and result["promptVersion"] == ai.FALLBACK_VERSION and result["ms"] < 1500
+
+
+def test_client_is_reused(gemini):
+    gemini([GOOD, GOOD])
+    first = ai._client()
+    asyncio.run(ai.classify("Máy không lên nguồn", CATEGORIES, 0.6))
+    asyncio.run(ai.classify("Máy không lên nguồn", CATEGORIES, 0.6))
+    assert ai._client() is first

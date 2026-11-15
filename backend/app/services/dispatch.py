@@ -26,6 +26,7 @@ from app.services.common import (
     dispatcher_ids,
     find_ticket,
     load_config,
+    load_tickets,
     notify,
     page_of,
     require_roles,
@@ -178,10 +179,10 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
 def list_payments(db: Session, user: User) -> list[Ticket]:
     """Mọi khoản đang chờ xử lý, kèm các khoản đã xong gần đây."""
     require_roles(user, "DPV", "QTV")
-    base = select(Ticket).join(Payment, Payment.ticket_id == Ticket.id).order_by(Payment.paid_at.desc().nulls_last())
+    base = select(Ticket.id).join(Payment, Payment.ticket_id == Ticket.id).order_by(Payment.paid_at.desc().nulls_last())
     pending = db.scalars(base.where(Payment.status.in_(PENDING_PAYMENT_STATUSES))).all()
     done = db.scalars(base.where(Payment.status.in_(DONE_PAYMENT_STATUSES)).limit(RECENT_PAYMENTS)).all()
-    return [*pending, *done]
+    return load_tickets(db, [*pending, *done])
 
 
 def confirm_transfer(db: Session, user: User, ticket_id: str) -> Ticket:
