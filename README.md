@@ -44,9 +44,6 @@ it-onsite/
 ├── backend/        REST API (FastAPI), xem backend/README.md
 ├── frontend/       Giao diện (React), xem frontend/README.md
 ├── infra/          Docker Compose, dịch vụ gửi email, xem infra/README.md
-├── docs/           Tài liệu dự án
-│   ├── srs/        Tài liệu đặc tả yêu cầu phần mềm (SRS), chính sách vận hành
-│   └── quan-ly/    WBS, bảng phân công nhiệm vụ
 ├── .github/        Mẫu Issue, mẫu Pull Request, CI
 ├── Dockerfile      Image chạy toàn bộ hệ thống trên một địa chỉ
 └── render.yaml     Cấu hình triển khai lên Render
@@ -68,15 +65,6 @@ Mở http://localhost:8080. Tài khoản dùng thử: `khach@demo.vn`, `ktv@demo
 Bản chạy thật triển khai trên Render (gói miễn phí) với cơ sở dữ liệu ở Neon, xem mục "Triển khai lên Render" trong `infra/README.md`.
 
 Khi phát triển, chạy riêng backend (`backend/README.md`) và frontend (`frontend/README.md`). Mỗi Pull Request được GitHub Actions kiểm tra mã nguồn, chạy kiểm thử backend, frontend và kiểm thử đầu-cuối.
-
-## Tài liệu
-
-| Tài liệu | Vị trí | Trạng thái |
-|---|---|---|
-| Đặc tả yêu cầu phần mềm (SRS) v0.1 | [docs/srs/SRS_IT_OnSite_v0.1.docx](docs/srs/SRS_IT_OnSite_v0.1.docx) | Đã duyệt |
-| Chính sách vận hành dịch vụ | [docs/srs/ChinhSachVanHanh.docx](docs/srs/ChinhSachVanHanh.docx) | Đã duyệt |
-| WBS và kế hoạch | [docs/quan-ly/WBS_IT_OnSite.xlsx](docs/quan-ly/WBS_IT_OnSite.xlsx) | Đã duyệt |
-| Phân công nhiệm vụ theo giai đoạn | [docs/quan-ly/PhanCong_IT_OnSite.xlsx](docs/quan-ly/PhanCong_IT_OnSite.xlsx) | Đang theo dõi |
 
 ## Quản lý công việc
 
