@@ -274,6 +274,7 @@ p { margin: 0; }
 .timeline li.cancel .dot { background: var(--danger); border-color: var(--danger); color: #fff; }
 .timeline .t { font-weight: 600; font-size: 14px; }
 .timeline .s { font-size: 12.5px; color: var(--ink-3); }
+.next-action { margin: 0 0 14px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--accent-50); border: 1px solid var(--accent-100); }
 .timeline li.todo .t { color: var(--ink-4); font-weight: 500; }
 
 /* ---------- Bước ---------- */
@@ -369,3 +370,16 @@ a.list-item:hover { background: #fafcfb; color: inherit; }
   .receipt { border: 0; border-radius: 0; padding: 0; }
   .receipt-brand { color: #000; }
 }
+
+/* ---------- Sơ đồ quy trình (trang Quy trình) ---------- */
+.process-diagram { overflow-x: auto; }
+.process-svg { display: block; width: 100%; min-width: 640px; max-width: 760px; margin: 0 auto; height: auto; font-family: var(--font); }
+.process-svg .lane-line { stroke: var(--line); stroke-dasharray: 3 4; }
+.process-svg .lane-title { font-size: 13px; font-weight: 600; fill: var(--ink-2); }
+.process-svg .box rect { fill: var(--brand-50); stroke: var(--brand-500); stroke-width: .8; }
+.process-svg .box.system rect { fill: var(--muted-bg); stroke: var(--ink-4); }
+.process-svg .box-title { font-size: 13px; font-weight: 600; fill: var(--brand-900); }
+.process-svg .box.system .box-title { fill: var(--ink); }
+.process-svg .box-sub { font-size: 11.5px; fill: var(--ink-3); }
+.process-svg .flow { fill: none; stroke: var(--ink-3); stroke-width: 1.2; }
+.process-svg .flow.branch { stroke: var(--accent-600); stroke-dasharray: 5 4; }

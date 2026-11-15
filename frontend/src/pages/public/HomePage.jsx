@@ -66,7 +66,7 @@ export default function HomePage() {
         <div className="container">
           <div className="section-head">
             <h2>Quy trình 6 bước rõ ràng</h2>
-            <p>Mỗi bước đều được ghi lại trên phiếu yêu cầu, bạn theo dõi được từ lúc đặt lịch tới khi hết hạn bảo hành.</p>
+            <p>Mỗi bước đều được ghi lại trên phiếu yêu cầu, bạn theo dõi được từ lúc đặt lịch tới khi hết hạn bảo hành. <Link to="/quy-trinh">Xem sơ đồ quy trình chi tiết</Link>.</p>
           </div>
           <div className="steps">
             {STEPS.map(({ icon: I, title, text }, i) => (

@@ -100,7 +100,7 @@ export function PublicLayout() {
           <nav className="topnav" aria-label="Điều hướng chính">
             <NavLink to="/" end>Trang chủ</NavLink>
             <NavLink to="/bang-gia">Bảng giá</NavLink>
-            <a href="/#quy-trinh">Quy trình</a>
+            <NavLink to="/quy-trinh">Quy trình</NavLink>
           </nav>
           <div className="topbar-actions">
             {user ? (
@@ -133,6 +133,12 @@ export function PublicLayout() {
             <strong style={{ color: 'var(--ink)' }}>Tài khoản</strong>
             <Link to="/dang-nhap">Đăng nhập</Link>
             <Link to="/dang-ky">Đăng ký</Link>
+          </div>
+          <div className="stack-sm">
+            <strong style={{ color: 'var(--ink)' }}>Thông tin</strong>
+            <Link to="/quy-trinh">Quy trình xử lý</Link>
+            <Link to="/dieu-khoan">Điều khoản dịch vụ</Link>
+            <Link to="/bao-ve-du-lieu">Chính sách dữ liệu cá nhân</Link>
           </div>
         </div>
         <div className="container tiny faint" style={{ marginTop: 24 }}>© {new Date().getFullYear()} IT OnSite</div>

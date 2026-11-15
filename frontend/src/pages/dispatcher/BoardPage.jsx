@@ -5,7 +5,7 @@ import { useNotifications } from '../../context/AppContext.jsx';
 import { api } from '../../services/api.js';
 import { Alert, Badge, Button, Card, Empty, ErrorState, Field, Loading, Modal, PageHead, StatusBadge } from '../../components/ui.jsx';
 import { AiResult, TicketTimeline } from '../../components/ticket.jsx';
-import { BUSY_STATUSES, CANCELLABLE, DEPOSIT_STATUS_LABEL, DEPOSIT_STATUS_TONE, STATUS } from '../../lib/ticketStatus.js';
+import { BUSY_STATUSES, CANCELLABLE, DEPOSIT_STATUS_LABEL, DEPOSIT_STATUS_TONE, STATUS, isOverdue } from '../../lib/ticketStatus.js';
 import { URGENCY_LABEL } from '../../lib/classifier.js';
 import { combineDateTime, formatDateTime, formatTime, money, relativeDay, timeAgo, timeSlots, toDateInput } from '../../lib/format.js';
 import { oldWardText } from '../../lib/wards.js';
@@ -27,6 +27,7 @@ function TicketCard({ t, selected, onSelect }) {
         <span className="t">{t.category?.name}</span>
         {t.urgency === 'CAO' && <Badge tone="danger" plain>Khẩn</Badge>}
       </div>
+      {isOverdue(t) && <Badge tone="danger" plain>Quá giờ hẹn</Badge>}
       <div className="m"><span className="mono">{t.id.slice(-12)}</span>·<span>{t.ward}</span></div>
       <div className="m"><CalendarClock size={13} aria-hidden />{relativeDay(at)} {formatTime(at)}</div>
       {t.technician && t.status !== STATUS.MOI && t.status !== STATUS.DA_TIEP_NHAN && <div className="m"><UserCheck size={13} aria-hidden />{t.technician.name}</div>}
