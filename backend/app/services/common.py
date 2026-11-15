@@ -111,6 +111,14 @@ def page_of(db: Session, query, limit: int, offset: int) -> tuple[list, int]:
     return list(db.scalars(query.limit(limit).offset(offset))), total
 
 
+def load_tickets(db: Session, ids: list[str]) -> list[Ticket]:
+    """Tải nhiều phiếu trong một lượt (kèm chi tiết), giữ đúng thứ tự mã phiếu truyền vào."""
+    if not ids:
+        return []
+    found = {t.id: t for t in db.scalars(select(Ticket).where(Ticket.id.in_(ids)))}
+    return [found[i] for i in ids if i in found]
+
+
 def find_ticket(db: Session, ticket_id: str, lock: bool = False) -> Ticket:
     query = select(Ticket).where(Ticket.id == ticket_id)
     if lock:
