@@ -10,14 +10,14 @@ const LANE_W = 150;
 const BOX_W = 140;
 const BOX_H = 50;
 const ROW_H = 70;
-const TOP = 90;
+const TOP = 50;
 const laneX = (lane) => 40 + lane * LANE_W + (LANE_W - BOX_W) / 2;
 const centerX = (lane) => laneX(lane) + BOX_W / 2;
 const rowY = (row) => TOP + row * ROW_H;
 
 function steps(config) {
   return [
-    { lane: 0, title: 'Đặt lịch', sub: 'Có hoặc không tài khoản' },
+    { lane: 0, title: 'Đặt lịch', sub: 'Có thể đặt nhanh' },
     { lane: 1, title: 'AI phân loại', sub: 'Phiếu: Mới tạo' },
     { lane: 0, title: 'Trả phí giữ lịch', sub: `${money(config.surveyFee)}, ${config.depositMinutes} phút` },
     { lane: 2, title: 'Xác nhận phí', sub: 'Đã tiếp nhận' },
@@ -62,8 +62,8 @@ function SwimlaneDiagram({ config }) {
           <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </marker>
       </defs>
-      {[1, 2, 3].map((i) => <line key={i} x1={40 + i * LANE_W} y1="40" x2={40 + i * LANE_W} y2={height - 10} className="lane-line" />)}
-      {LANES.map((name, i) => <text key={name} x={40 + i * LANE_W + LANE_W / 2} y="62" textAnchor="middle" className="lane-title">{name}</text>)}
+      {[1, 2, 3].map((i) => <line key={i} x1={40 + i * LANE_W} y1="6" x2={40 + i * LANE_W} y2={height - 10} className="lane-line" />)}
+      {LANES.map((name, i) => <text key={name} x={40 + i * LANE_W + LANE_W / 2} y="26" textAnchor="middle" className="lane-title">{name}</text>)}
       {list.map((s, i) => (
         <g key={s.title} className={s.lane === 1 ? 'box system' : 'box'}>
           <rect x={laneX(s.lane)} y={rowY(i)} width={BOX_W} height={BOX_H} rx="8" />
@@ -97,7 +97,7 @@ export default function ProcessPage() {
     ['Bảo hành, đánh giá', 'Hệ thống, Khách hàng', 'Hoàn tất', `Phát phiếu bảo hành theo từng hạng mục; khách đánh giá trong ${c.reviewWindowDays} ngày.`],
   ];
   return (
-    <div className="container app-main">
+    <main className="container app-main">
       <div className="page-head">
         <div>
           <h1>Quy trình xử lý yêu cầu</h1>
@@ -110,15 +110,16 @@ export default function ProcessPage() {
           <div className="process-diagram"><SwimlaneDiagram config={c} /></div>
           <p className="small muted" style={{ marginTop: 8 }}>Đường nét đứt là nhánh rẽ: kỹ thuật viên từ chối hoặc quá hạn phản hồi, khách từ chối báo giá, nghiệm thu chưa đạt.</p>
         </Card>
-        <Card title="Các bước" bodyClass="table-wrap">
-          <table className="table">
-            <thead><tr><th>Bước</th><th>Người thực hiện</th><th>Trạng thái phiếu</th><th>Nội dung</th></tr></thead>
-            <tbody>
-              {rows.map(([step, who, status, text]) => (
-                <tr key={step}><td className="strong">{step}</td><td>{who}</td><td>{status}</td><td className="muted">{text}</td></tr>
-              ))}
-            </tbody>
-          </table>
+        <Card title="Các bước">
+          <ol className="process-steps">
+            {rows.map(([step, who, status, text]) => (
+              <li key={step}>
+                <div className="strong">{step}</div>
+                <div className="small"><span className="process-who">{who}</span> · Trạng thái phiếu: {status}</div>
+                <div className="small muted">{text}</div>
+              </li>
+            ))}
+          </ol>
         </Card>
         <Card title="Nhánh rẽ và hủy">
           <ul className="stack-sm" style={{ margin: 0, paddingLeft: 18 }}>
@@ -131,6 +132,6 @@ export default function ProcessPage() {
           </ul>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }

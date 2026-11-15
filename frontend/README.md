@@ -76,6 +76,8 @@ frontend/
 | `/dang-nhap`, `/dang-ky`, `/quen-mat-khau`, `/dat-lai-mat-khau` | Đăng nhập, đăng ký, quên và đặt lại mật khẩu | UC01 |
 | `/`, `/bang-gia` | Trang chủ, bảng giá dịch vụ | UC03 |
 | `/dat-lich` | Đặt lịch nhanh không cần tài khoản | UC04, UC05 |
+| `/quy-trinh` | Sơ đồ quy trình xử lý yêu cầu theo người thực hiện (khách, hệ thống, điều phối viên, kỹ thuật viên), các bước, nhánh rẽ; số liệu lấy từ tham số cấu hình | UC03, UC06 |
+| `/dieu-khoan`, `/bao-ve-du-lieu` | Điều khoản dịch vụ, chính sách dữ liệu cá nhân (liên kết từ ô đồng ý khi đặt lịch, đăng ký) | UC01, UC04 |
 | `/tra-cuu` | Tra cứu đơn bằng mã đơn và số điện thoại; phiên tra cứu làm các bước của khách trên đơn đó | UC06 |
 | `/khach/ho-so` | Hồ sơ, thiết bị, liên kết Telegram, tải về và yêu cầu xóa dữ liệu | UC02, UC17 |
 | `/khach/tao-yeu-cau` | Đặt lịch 3 bước, gợi ý loại sự cố | UC04, UC05 |
@@ -110,4 +112,5 @@ Quy tắc nghiệp vụ được kiểm tra ở backend; `src/lib` giữ bản d
 - `e2e/luong-nghiep-vu.spec.js`: chạy trọn quy trình từ khách đặt lịch tới bảo hành qua 4 vai trò, nhánh từ chối báo giá, quá hạn phản hồi, hủy phiếu, phân quyền. Chạy được với cả dữ liệu giả lập và backend thật.
 - `e2e/luong-phu.spec.js`: các luồng phụ – đổi lịch, ngày nghỉ của kỹ thuật viên, nghiệm thu chưa đạt và báo giá bổ sung, mã xác nhận tại chỗ, kỹ thuật viên từ chối việc, từ chối bảo hành, hồ sơ, đăng ký, báo cáo và lương, các màn hình quản trị.
 - `e2e/khach-dat-nhanh.spec.js`: đặt nhanh không cần tài khoản, tra cứu bằng mã đơn và số điện thoại, tạo tài khoản bằng cùng số điện thoại.
+- `e2e/trang-thong-tin.spec.js`: trang Quy trình, Điều khoản, Chính sách dữ liệu khớp tham số cấu hình.
 - `e2e/giao-dien.spec.js`: mở mọi màn hình trên máy tính và điện thoại, kiểm tra không lỗi JavaScript và không tràn ngang.

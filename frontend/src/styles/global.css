@@ -383,3 +383,7 @@ a.list-item:hover { background: #fafcfb; color: inherit; }
 .process-svg .box-sub { font-size: 11.5px; fill: var(--ink-3); }
 .process-svg .flow { fill: none; stroke: var(--ink-3); stroke-width: 1.2; }
 .process-svg .flow.branch { stroke: var(--accent-600); stroke-dasharray: 5 4; }
+.process-steps { margin: 0; padding-left: 22px; display: grid; gap: 12px; }
+.process-steps li { padding-left: 4px; }
+.process-steps li::marker { font-weight: 600; color: var(--brand-600); }
+.process-who { font-weight: 600; color: var(--brand-700); }

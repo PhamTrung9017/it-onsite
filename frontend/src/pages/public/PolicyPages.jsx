@@ -9,7 +9,7 @@ import { money } from '../../lib/format.js';
 function PolicyShell({ title, sub, children }) {
   const { data, loading, error, reload } = useLoad(() => api.getCatalog(), []);
   return (
-    <div className="container app-main narrow">
+    <main className="container app-main narrow">
       <div className="page-head">
         <div>
           <h1>{title}</h1>
@@ -19,7 +19,7 @@ function PolicyShell({ title, sub, children }) {
       {loading && <Loading />}
       {error && <ErrorState error={error} onRetry={reload} />}
       {data && <div className="stack policy">{children(data)}</div>}
-    </div>
+    </main>
   );
 }
 
