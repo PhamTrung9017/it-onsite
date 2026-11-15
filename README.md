@@ -73,7 +73,7 @@ Khi phát triển, chạy riêng backend (`backend/README.md`) và frontend (`fr
 
 | Tài liệu | Vị trí | Trạng thái |
 |---|---|---|
-| Đặc tả yêu cầu phần mềm (SRS) v0.1 | [docs/srs/SRS_IT_OnSite_v0.1.docx](docs/srs/SRS_IT_OnSite_v0.1.docx) | Đã duyệt |
+| Đặc tả yêu cầu phần mềm (SRS) v0.1 | [docs/srs/SRS_IT_OnSite.docx](docs/srs/SRS_IT_OnSite.docx) | Đã duyệt |
 | Chính sách vận hành dịch vụ | [docs/srs/ChinhSachVanHanh.docx](docs/srs/ChinhSachVanHanh.docx) | Đã duyệt |
 | WBS và kế hoạch | [docs/quan-ly/WBS_IT_OnSite.xlsx](docs/quan-ly/WBS_IT_OnSite.xlsx) | Đã duyệt |
 | Phân công nhiệm vụ theo giai đoạn | [docs/quan-ly/PhanCong_IT_OnSite.xlsx](docs/quan-ly/PhanCong_IT_OnSite.xlsx) | Đang theo dõi |
