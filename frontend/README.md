@@ -32,18 +32,9 @@ Mở http://localhost:5173. Khi gọi backend thật, chạy backend trước th
 
 Lần đầu chạy kiểm thử đầu-cuối cần cài trình duyệt: `npx playwright install chromium`.
 
-## Tài khoản dùng thử
+## Dữ liệu trình diễn
 
-Có sau khi nạp dữ liệu trình diễn (`python -m app.seed demo` ở backend) hoặc khi chạy bằng dữ liệu giả lập. Mật khẩu chung: `123456`. Nút đăng nhập nhanh hiện khi chạy dữ liệu giả lập hoặc khi đặt `VITE_DEMO_ACCOUNTS=true`.
-
-| Vai trò | Email | Ghi chú |
-|---|---|---|
-| Khách hàng | khach@demo.vn | Có sẵn phiếu chờ duyệt báo giá, phiếu đã hoàn tất còn bảo hành |
-| Kỹ thuật viên | ktv@demo.vn | Có sẵn một việc mới đang chờ phản hồi |
-| Điều phối viên | dpv@demo.vn | |
-| Quản trị viên | qtv@demo.vn | Có thêm vai trò điều phối viên, đổi vai trò ở menu tài khoản |
-
-Dữ liệu trình diễn gồm 30 ngày lịch sử phiếu để màn hình báo cáo có số liệu. Với dữ liệu giả lập, chọn **Khôi phục dữ liệu mẫu** trong menu tài khoản để quay về trạng thái ban đầu. Số tài khoản ngân hàng trong mã VietQR là số mẫu, quản trị viên đổi trong màn hình cấu hình tham số.
+Nạp bằng `python -m app.seed demo` ở backend, hoặc có sẵn khi chạy bằng dữ liệu giả lập. Dữ liệu trình diễn gồm 30 ngày lịch sử phiếu để màn hình báo cáo có số liệu. Với dữ liệu giả lập, chọn **Khôi phục dữ liệu mẫu** trong menu tài khoản để quay về trạng thái ban đầu. Số tài khoản ngân hàng trong mã VietQR là số mẫu, quản trị viên đổi trong màn hình cấu hình tham số.
 
 ## Cấu trúc thư mục
 

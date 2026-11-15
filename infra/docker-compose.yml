@@ -46,8 +46,6 @@ services:
   frontend:
     build:
       context: ../frontend
-      args:
-        VITE_DEMO_ACCOUNTS: ${DEMO_ACCOUNTS:-false}
     depends_on:
       - backend
     ports:

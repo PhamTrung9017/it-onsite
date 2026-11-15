@@ -122,7 +122,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Dựng image chạy toàn bộ hệ thống (Render)
-        run: docker build --build-arg VITE_DEMO_ACCOUNTS=true -t it-onsite .
+        run: docker build -t it-onsite .
       - name: Chạy image như trên Render
         run: |
           docker run -d --name app --network host \
