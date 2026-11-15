@@ -7,7 +7,16 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import ApiError, conflict, not_found
-from app.domain.rules import Candidate, WorkSchedule, has_conflict, off_duty, rank_technicians, response_deadline, warranty_status
+from app.domain.rules import (
+    Candidate,
+    WorkSchedule,
+    has_conflict,
+    off_duty,
+    outside_service_hours,
+    rank_technicians,
+    response_deadline,
+    warranty_status,
+)
 from app.domain.status import CLOSED_STATUSES, DepositStatus, Status
 from app.models import Assignment, Category, Payment, Service, Technician, Ticket, User, WarrantyClaim
 from app.services import telegram
@@ -142,6 +151,9 @@ def assign(db: Session, user: User, ticket_id: str, tech_id: int, appointment_at
     if appointment_at < now:
         raise ApiError("Giờ hẹn phải ở tương lai.")
     config = load_config(db)
+    error = outside_service_hours(appointment_at, config, get_settings().tz)
+    if error:
+        raise ApiError(error)
     if off_duty(WorkSchedule.from_dict(tech.schedule), appointment_at, ticket.estimated_minutes, get_settings().tz):
         raise conflict("Giờ hẹn nằm ngoài lịch làm việc của kỹ thuật viên này.")
     if has_conflict(tech.id, appointment_at, ticket.estimated_minutes, bookings(db), config, ticket.id):

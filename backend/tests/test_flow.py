@@ -169,10 +169,10 @@ def test_reject_quote_pays_survey_fee_in_cash_without_deposit(client, khach, dpv
     assert reconciled["payment"]["status"] == "DA_DOI_SOAT"
 
 
-def test_onsite_confirmation_code(client, khach, ktv):
+def test_onsite_confirmation_code(client, khach, ktv, khach_telegram):
     ticket = next(t for t in khach.ok("get", "/tickets/mine") if t["status"] == "CHO_DUYET_BAO_GIA")
     sent = ktv.ok("post", f"/tickets/{ticket['id']}/onsite-code")
-    assert sent["sentTo"] == "0909000001"
+    assert sent["channels"] == ["Telegram"]
     message = khach.ok("get", "/notifications")[0]["body"]
     code = next(word for word in message.split() if word.isdigit() and len(word) == 6)
     assert ktv.post(f"/tickets/{ticket['id']}/onsite-code/confirm", {"code": "000000"}).status_code == 400

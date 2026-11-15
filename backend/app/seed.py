@@ -64,7 +64,7 @@ DEFAULT_CONFIG = BusinessConfig(
     bank_name="Ngân hàng mẫu",
     bank_bin="970423",
     bank_account_number="0123456789",
-    bank_account_name="CAI WIN DAO",
+    bank_account_name="IT ONSITE",
     base_salary=5000000,
     commission_percent=30,
 )

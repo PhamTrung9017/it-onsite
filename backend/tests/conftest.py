@@ -94,6 +94,19 @@ def khach(client):
 
 
 @pytest.fixture
+def khach_telegram(monkeypatch):
+    """Bật Telegram và liên kết Telegram cho khach@demo.vn (để nhận mã xác nhận tại chỗ)."""
+    from app.core.config import get_settings
+    from app.db import SessionLocal
+    from app.models import User
+
+    monkeypatch.setattr(get_settings(), "telegram_bot_token", "token")
+    with SessionLocal() as db:
+        db.query(User).filter(User.email == "khach@demo.vn").update({"telegram_chat_id": "999"})
+        db.commit()
+
+
+@pytest.fixture
 def ktv(client):
     return Api(client, "ktv@demo.vn")
 

@@ -129,7 +129,7 @@ class FakeResponse:
 
 def queue_email() -> None:
     with SessionLocal() as db:
-        message = OutboxMessage(channel="email", recipient="khach@demo.vn", subject="Biên nhận", body="Nội dung")
+        message = OutboxMessage(channel="email", recipient="khach@example.com", subject="Biên nhận", body="Nội dung")
         message.next_attempt_at = outbox.utcnow()
         db.add(message)
         db.commit()
@@ -161,7 +161,7 @@ def test_email_relay_over_https(client, monkeypatch, answer, status):
     assert email_status() == status, "trả lời khác OK thì giữ lại để gửi lại sau"
     url, body, follow = sent[0]
     assert url.endswith("/exec") and follow is True
-    assert body == {"secret": "khoa", "to": "khach@demo.vn", "subject": "Biên nhận", "body": "Nội dung"}
+    assert body == {"secret": "khoa", "to": "khach@example.com", "subject": "Biên nhận", "body": "Nội dung"}
 
 
 def test_first_start_seeds_only_empty_database(monkeypatch):
