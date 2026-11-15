@@ -98,7 +98,8 @@ test.describe('Các luồng phụ và màn hình quản trị', () => {
 
     await page.selectOption('#ft', { label: 'Nguyễn Văn An' });
     await expect(page.getByRole('button', { name: 'Bỏ lọc' })).toBeEnabled();
-    await expect(page.locator('table tbody tr')).toHaveCount(await page.locator('table tbody tr', { hasText: 'Nguyễn Văn An' }).count());
+    await expect(page.locator('table tbody tr', { hasText: 'Nguyễn Văn An' })).toHaveCount(1);
+    await expect(page.locator('table tbody tr', { hasNotText: 'Nguyễn Văn An' })).toHaveCount(0);
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Xuất Excel' }).click();
     expect((await download).suggestedFilename()).toBe(`bao-cao-${start}-den-${end}.xlsx`);

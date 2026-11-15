@@ -4,8 +4,7 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ .
-ARG VITE_DEMO_ACCOUNTS=false
-ENV VITE_API_URL=/api/v1 VITE_DEMO_ACCOUNTS=$VITE_DEMO_ACCOUNTS
+ENV VITE_API_URL=/api/v1
 RUN npm run build
 
 FROM python:3.12-slim
