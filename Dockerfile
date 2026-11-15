@@ -1,5 +1,3 @@
-# Một image chạy toàn bộ hệ thống: backend FastAPI phục vụ API, ảnh và bản dựng giao diện React trên cùng một địa chỉ.
-# Dùng cho Render (render.yaml). Chạy bằng Docker Compose thì xem infra/.
 
 FROM node:22-alpine AS frontend
 WORKDIR /app
