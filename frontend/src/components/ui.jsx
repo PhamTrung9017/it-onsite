@@ -124,15 +124,18 @@ export function Alert({ tone = 'info', title, children, icon: Icon = tone === 'i
 
 export function Modal({ open, title, onClose, children, footer, wide }) {
   const ref = useRef();
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; });
+  // Chỉ chạy khi mở/đóng: đặt con trỏ vào ô đầu tiên một lần, không giật con trỏ mỗi lần gõ.
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e) => e.key === 'Escape' && closeRef.current();
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     ref.current?.querySelector('input, textarea, select, button.btn')?.focus();
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
