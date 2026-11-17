@@ -8,10 +8,10 @@ import { STATUS_LABEL, STATUS_TONE } from '../lib/ticketStatus.js';
 import { money } from '../lib/format.js';
 import { compressImage } from '../lib/image.js';
 
-export function Button({ variant = 'primary', size, block, loading, icon: Icon, children, className = '', ...props }) {
+export function Button({ variant = 'primary', size, block, loading, disabled, icon: Icon, children, className = '', ...props }) {
   const cls = ['btn', `btn-${variant}`, size && `btn-${size}`, block && 'btn-block', className].filter(Boolean).join(' ');
   return (
-    <button type="button" className={cls} disabled={loading || props.disabled} {...props}>
+    <button type="button" className={cls} {...props} disabled={Boolean(loading || disabled)} aria-busy={loading || undefined}>
       {loading ? <span className="spinner" aria-hidden /> : Icon && <Icon aria-hidden />}
       {children}
     </button>

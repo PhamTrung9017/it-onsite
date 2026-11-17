@@ -1,5 +1,5 @@
 /** Thu nhỏ và nén ảnh trước khi tải lên (giảm dung lượng gửi đi). */
-export const MAX_PHOTO_MB = 8;
+export const MAX_PHOTO_MB = 20;
 
 export function compressImage(file, maxSize = 960, quality = 0.72) {
   return new Promise((resolve, reject) => {

@@ -85,10 +85,65 @@ async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
     return JSONResponse({"detail": exc.message}, status_code=exc.status_code)
 
 
+FIELD_LABELS = {
+    "name": "Họ tên",
+    "email": "Email",
+    "phone": "Số điện thoại",
+    "password": "Mật khẩu",
+    "current": "Mật khẩu hiện tại",
+    "next": "Mật khẩu mới",
+    "identifier": "Email hoặc số điện thoại",
+    "address": "Địa chỉ",
+    "ward": "Phường",
+    "description": "Mô tả sự cố",
+    "deviceType": "Loại thiết bị",
+    "deviceBrand": "Hãng",
+    "deviceModel": "Dòng máy",
+    "brand": "Hãng",
+    "model": "Dòng máy",
+    "type": "Loại",
+    "note": "Ghi chú",
+    "slotStart": "Khung giờ hẹn",
+    "appointmentAt": "Giờ hẹn",
+    "reason": "Lý do",
+    "comment": "Nhận xét",
+    "stars": "Số sao",
+    "code": "Mã",
+    "ticketId": "Mã đơn",
+    "price": "Đơn giá",
+    "stock": "Tồn kho",
+    "qty": "Số lượng",
+    "durationMin": "Thời lượng",
+    "warrantyDays": "Số ngày bảo hành",
+    "deviceCredentials": "Thông tin đăng nhập máy",
+    "items": "Hạng mục",
+    "photos": "Ảnh",
+    "roles": "Vai trò",
+    "skills": "Kỹ năng",
+    "areas": "Khu vực",
+    "schedule": "Lịch làm việc",
+    "categoryCode": "Loại sự cố",
+    "urgency": "Mức khẩn",
+}
+
+
+def _field_message(err: dict) -> str:
+    field = str(err["loc"][-1]) if err.get("loc") else ""
+    label = FIELD_LABELS.get(field, field or "Dữ liệu")
+    kind, ctx = err.get("type", ""), err.get("ctx") or {}
+    if kind == "string_too_long":
+        return f"{label} dài quá {ctx.get('max_length')} ký tự"
+    if kind == "missing":
+        return f"thiếu {label.lower()}"
+    if kind in ("greater_than_equal", "greater_than", "less_than_equal", "less_than"):
+        return f"{label} vượt giới hạn cho phép"
+    return f"{label} không hợp lệ"
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
-    fields = sorted({str(err["loc"][-1]) for err in exc.errors() if err.get("loc")})
-    message = "Dữ liệu gửi lên không hợp lệ" + (f": {', '.join(fields)}." if fields else ".")
+    parts = list(dict.fromkeys(_field_message(err) for err in exc.errors()))
+    message = "Dữ liệu chưa hợp lệ" + (f": {'; '.join(parts)}." if parts else ".")
     return JSONResponse({"detail": message, "errors": jsonable_errors(exc)}, status_code=422)
 
 
