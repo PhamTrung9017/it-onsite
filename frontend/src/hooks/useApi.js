@@ -31,7 +31,10 @@ export function useLoad(loader, deps = []) {
 export function useAction() {
   const toast = useToast();
   const [busy, setBusy] = useState(null);
+  const running = useRef(false);
   const run = useCallback(async (key, fn, successMessage) => {
+    if (running.current) return null;
+    running.current = true;
     setBusy(key);
     try {
       const r = await fn();
@@ -41,6 +44,7 @@ export function useAction() {
       toast.error(e.message || 'Đã có lỗi xảy ra, vui lòng thử lại.');
       return null;
     } finally {
+      running.current = false;
       setBusy(null);
     }
   }, [toast]);
