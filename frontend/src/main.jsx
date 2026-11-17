@@ -18,6 +18,11 @@ import './styles/layout.css';
 import App from './App.jsx';
 import { AuthProvider, NotificationProvider, ToastProvider } from './context/AppContext.jsx';
 
+// Lăn chuột khi con trỏ đang ở ô nhập số thì cuộn trang, không đổi giá trị ô.
+document.addEventListener('wheel', () => {
+  if (document.activeElement?.type === 'number') document.activeElement.blur();
+}, { passive: true });
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
